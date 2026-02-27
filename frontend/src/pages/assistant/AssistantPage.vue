@@ -415,6 +415,12 @@ const clearLibrarySelection = async () => {
   await saveLibraryIdsToConversation()
 }
 
+// Remove a single library from selection
+const handleRemoveLibrary = async (id: number) => {
+  selectedLibraryIds.value = selectedLibraryIds.value.filter((lid) => lid !== id)
+  await saveLibraryIdsToConversation()
+}
+
 // Save thinking mode to current conversation
 const saveThinkingToConversation = async () => {
   if (!activeConversationId.value) return
@@ -999,6 +1005,7 @@ onUnmounted(() => {
         @library-selection-change="handleLibrarySelectionChange"
         @clear-library-selection="clearLibrarySelection"
         @load-libraries="loadLibrariesFn"
+        @remove-library="handleRemoveLibrary"
       />
     </section>
     </div><!-- End upper row -->
@@ -1031,6 +1038,7 @@ onUnmounted(() => {
       @library-selection-change="handleLibrarySelectionChange"
       @clear-library-selection="clearLibrarySelection"
       @load-libraries="loadLibrariesFn"
+      @remove-library="handleRemoveLibrary"
     />
     </div><!-- End main content wrapper -->
 

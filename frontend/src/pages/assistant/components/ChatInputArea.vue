@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
-import { ArrowUp, Square, Check, Lightbulb } from 'lucide-vue-next'
+import { ArrowUp, Square, Check, Lightbulb, X } from 'lucide-vue-next'
 import {
   Select,
   SelectContent,
@@ -61,6 +61,7 @@ const emit = defineEmits<{
   librarySelectionChange: []
   clearLibrarySelection: []
   loadLibraries: []
+  removeLibrary: [id: number]
 }>()
 
 const { t } = useI18n()
@@ -76,6 +77,24 @@ const handleChatEnter = (event: KeyboardEvent) => {
 
   event.preventDefault()
   emit('send')
+}
+
+const MAX_VISIBLE_LIBRARIES = 3
+
+const selectedLibraries = computed(() =>
+  props.libraries.filter((lib) => props.selectedLibraryIds.includes(lib.id))
+)
+
+const visibleLibraries = computed(() =>
+  selectedLibraries.value.slice(0, MAX_VISIBLE_LIBRARIES)
+)
+
+const overflowCount = computed(() =>
+  Math.max(0, selectedLibraries.value.length - MAX_VISIBLE_LIBRARIES)
+)
+
+const handleRemoveLibrary = (id: number) => {
+  emit('removeLibrary', id)
 }
 
 const handleLibrarySelectionChange = () => {
@@ -127,6 +146,32 @@ function isProviderFree(pw: ProviderWithModels | undefined): boolean {
       <div
         class="w-full max-w-[800px] rounded-2xl border border-border bg-background px-4 pt-4 pb-3 shadow-sm dark:shadow-none dark:ring-1 dark:ring-white/10"
       >
+        <!-- Selected knowledge bases -->
+        <div
+          v-if="selectedLibraryIds.length > 0"
+          class="-mt-1 mb-3 flex flex-wrap items-center gap-1.5"
+        >
+          <div
+            v-for="lib in visibleLibraries"
+            :key="lib.id"
+            class="group flex items-center gap-1 rounded-md border border-border bg-muted/50 pl-2 pr-1 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-muted"
+          >
+            <span class="max-w-[120px] truncate">{{ lib.name }}</span>
+            <button
+              class="rounded-sm p-0.5 opacity-0 transition-opacity hover:bg-muted-foreground/10 group-hover:opacity-100"
+              @click="handleRemoveLibrary(lib.id)"
+            >
+              <X class="size-3" />
+            </button>
+          </div>
+          <span
+            v-if="overflowCount > 0"
+            class="rounded-md border border-border bg-muted/50 px-2 py-0.5 text-xs text-muted-foreground"
+          >
+            +{{ overflowCount }}
+          </span>
+        </div>
+
         <textarea
           :value="chatInput"
           :placeholder="t('assistant.placeholders.inputPlaceholder')"
