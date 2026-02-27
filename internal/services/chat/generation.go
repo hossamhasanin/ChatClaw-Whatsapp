@@ -235,9 +235,10 @@ func (s *ChatService) buildExtras(ctx context.Context, gc *generationContext) ([
 			s.app.Logger.Info("[chat] memory retriever tool created", "agent_id", agentExtras.AgentID)
 
 			agentConfig.Instruction += "\n\n[IMPORTANT] Long-term memory is enabled. " +
-				"When the user's message involves anything personal (likes, dislikes, habits, experiences, opinions, projects, etc.) or could benefit from prior context, " +
-				"you MUST call memory_retriever BEFORE responding. " +
-				"Provide 2-5 queries with varied keywords."
+				"You MUST call memory_retriever at the START of EVERY conversation turn BEFORE composing your response. " +
+				"This is mandatory — do NOT skip it even if the question seems simple, factual, or unrelated to the user personally. " +
+				"Memory may contain relevant context, preferences, or prior discussions that improve your answer. " +
+				"Provide 2-5 queries with varied keywords covering the user's question and related topics."
 		}
 	}
 

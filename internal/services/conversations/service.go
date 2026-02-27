@@ -145,6 +145,11 @@ func (s *ConversationsService) CreateConversation(input CreateConversationInput)
 		return nil, errs.Newf("error.agent_not_found", map[string]any{"ID": input.AgentID})
 	}
 
+	chatMode := strings.TrimSpace(input.ChatMode)
+	if chatMode == "" {
+		chatMode = ChatModeChat
+	}
+
 	m := &conversationModel{
 		AgentID:        input.AgentID,
 		Name:           name,
@@ -154,6 +159,7 @@ func (s *ConversationsService) CreateConversation(input CreateConversationInput)
 		LLMModelID:     strings.TrimSpace(input.LLMModelID),
 		LibraryIDs:     s.serializeLibraryIDs(input.LibraryIDs),
 		EnableThinking: input.EnableThinking,
+		ChatMode:       chatMode,
 	}
 
 	if _, err := db.NewInsert().Model(m).Exec(ctx); err != nil {
@@ -248,6 +254,10 @@ func (s *ConversationsService) UpdateConversation(id int64, input UpdateConversa
 
 		if input.EnableThinking != nil {
 			q = q.Set("enable_thinking = ?", *input.EnableThinking)
+		}
+
+		if input.ChatMode != nil {
+			q = q.Set("chat_mode = ?", strings.TrimSpace(*input.ChatMode))
 		}
 
 		res, err := q.Exec(ctx)

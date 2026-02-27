@@ -341,6 +341,12 @@ export default {
       expand: '展开',
       newConversation: '新会话',
     },
+    chatMode: {
+      chat: '聊天模式',
+      task: '任务模式',
+      chatDesc: '多场景下的多轮问答或思考推理',
+      taskDesc: '适合处理复杂任务并且自主交付结果',
+    },
     chat: {
       selectModel: '选择模型',
       freeBadge: '免费',

@@ -26,6 +26,7 @@ import {
 import { ProviderIcon } from '@/components/ui/provider-icon'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import IconSelectKnowledge from '@/assets/icons/select-knowledge.svg'
+import ChatModeSelector from './ChatModeSelector.vue'
 
 import type { ProviderWithModels } from '@bindings/chatclaw/internal/services/providers'
 import type { Library } from '@bindings/chatclaw/internal/services/library'
@@ -33,6 +34,7 @@ import LogoIcon from '@/assets/images/logo.svg'
 
 const props = defineProps<{
   chatInput: string
+  chatMode: string
   selectedModelKey: string
   selectedModelInfo: { providerId: string; modelId: string; modelName: string } | null
   providersWithModels: ProviderWithModels[]
@@ -50,6 +52,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   'update:chatInput': [value: string]
+  'update:chatMode': [value: string]
   'update:selectedModelKey': [value: string]
   'update:enableThinking': [value: boolean]
   'update:selectedLibraryIds': [value: number[]]
@@ -135,6 +138,11 @@ function isProviderFree(pw: ProviderWithModels | undefined): boolean {
 
         <div class="mt-3 flex items-center justify-between">
           <div class="flex items-center gap-2">
+            <ChatModeSelector
+              :model-value="chatMode"
+              @update:model-value="(v) => emit('update:chatMode', v)"
+            />
+
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger as-child>
