@@ -121,20 +121,43 @@ procSetWindowPos.Call(hwnd, 0, x, y, 0, 0, flags)
    - 该类问题属于 P0 交互稳定性问题（可能造成系统级“鼠标点击无效、需按 Win 键恢复”）。
    - 任何改动涉及 `WakeAttached` 触发范围时，必须显式说明“白名单区域”并做回归验证。
 
-7. **Windows 下禁止 snap 标题拖拽（必须）**
-   - 在 Windows 平台，snap 标题区域必须固定 `--wails-draggable: no-drag`（不区分 attached/standalone）。
-   - 原因：取消吸附后（standalone）点击标题拖拽区也可能触发系统级假死。
-   - 若未来要恢复拖拽，必须先完成专项回归（含“点外部应用后回点标题区”场景）。
+7. **标题拖拽最终方案（Windows，必须）**
+   - 标题栏所有节点统一保持 `--wails-draggable: no-drag`，禁止使用原生 `--wails-draggable: drag`。
+   - 拖拽改为“前端 pointer 事件 + `Window.Position/Window.SetPosition`”的自定义移动方案。
+   - 可拖拽区域为“标题栏空白区”；交互控件区域（按钮/下拉）必须排除拖拽触发。
+   - 拖拽开始时必须写入短时保护窗口（`snap_drag_guard_until_unix_ms`），拖拽结束清理。
+   - 后端在保护窗口内必须短路 `step()` 与 `WakeAttached()`，避免焦点链路并发。
+
+8. **取消吸附后禁止自动重吸附（必须）**
+   - `DetachToStandalone` 后必须停止 snap polling loop。
+   - 重新吸附只能由显式用户动作触发（如点击“重新吸附”后 `SyncFromSettings`）。
+   - 目的：避免 standalone 拖拽期间与后台 attach 轮询并发冲突导致假死。
+
+9. **窗口边缘 resize 规则（Windows，必须）**
+   - `winsnap` 窗口必须禁用原生边缘 resize（`DisableResize=true`）。
+   - 原因：从外部应用切回后，边缘 resize 与焦点线程链路并发时可稳定触发假死。
+   - 若未来需要可调尺寸，必须采用“自定义 resize”方案，不得恢复原生边缘 resize。
+
+### 复盘结论（主窗体/悬浮球/吸附窗差异）
+
+- 主窗体拖拽稳定：无吸附轮询、无目标窗口联动、无 `WakeAttached` 链路并发。
+- 悬浮球稳定：全链路为自定义拖拽 + `DisableResize=true`，不走高风险原生链路。
+- 吸附窗风险高：除拖拽外还叠加 `step()/attach/wake` 焦点链路；跨应用切回时最易触发时序冲突。
+- 因此吸附窗必须采用“自定义拖拽 + 禁止原生 resize + 拖拽保护窗口 + standalone 停轮询”的组合约束，缺一不可。
 
 ### 提交前检查清单
 
 - 是否只有一个 snap 全局 pointer 监听入口？
 - 监听是否包含 attached guard？
 - Header 按钮是否都带 `data-snap-action`？
-- Header 可拖拽根节点是否带 `data-snap-no-wake`？
+- Header 根节点是否保持 `data-snap-no-wake` 且不触发 `WakeAttached`？
 - 监听过滤是否覆盖 Radix Popper/Dialog/Listbox？
 - 触发是否采用 `data-snap-wake` 白名单而不是黑名单兜底？
 - 白名单是否仅包含消息区和输入区？
 - 是否移除了 window 级 `pointerdown` 触发 `WakeAttached`？
-- Windows 下标题区域是否固定 `--wails-draggable: no-drag`？
+- 标题栏是否仅使用“自定义拖拽”（pointer + `Window.SetPosition`）？
+- 拖拽区是否正确排除了按钮/下拉等交互控件？
+- 拖拽时是否设置了 `snap_drag_guard_until_unix_ms`，并在后端短路 `step/WakeAttached`？
+- `DetachToStandalone` 后是否确保停止 polling loop（不自动重吸附）？
+- Windows 下 `winsnap` 是否已禁用边缘 resize（`DisableResize=true`）？
 - 取消吸附后立即点击“吸附应用”是否不会触发 `WakeAttached`？

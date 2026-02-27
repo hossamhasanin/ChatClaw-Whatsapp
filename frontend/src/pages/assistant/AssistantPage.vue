@@ -598,7 +598,7 @@ let unsubscribeSnapStateChanged: (() => void) | null = null
 let unsubscribeTextSelectionSnap: (() => void) | null = null
 
 const wakeAttachedSkipSelector =
-  '[data-snap-no-wake], [data-snap-action], [data-radix-popper-content-wrapper], [data-radix-select-viewport], [data-radix-menu-content], [role="listbox"], [role="dialog"]'
+  '[data-snap-block-focus], [data-snap-drag-zone], [data-snap-no-wake], [data-snap-action], [data-radix-popper-content-wrapper], [data-radix-select-viewport], [data-radix-menu-content], [role="listbox"], [role="dialog"]'
 
 const shouldSkipWakeAttached = (e: globalThis.PointerEvent): boolean => {
   if (e.button !== 0) return true

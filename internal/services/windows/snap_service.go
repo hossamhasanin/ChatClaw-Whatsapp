@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -60,6 +61,7 @@ type customSnapAppConfig struct {
 const (
 	snapCustomAppsSettingKey = "snap_custom_apps"
 	snapCustomKeyPrefix      = "snap_custom_"
+	snapDragGuardUntilKey    = "snap_drag_guard_until_unix_ms"
 )
 
 // SnapService manages the single "winsnap" window and dynamically attaches it to
@@ -133,6 +135,10 @@ func (s *SnapService) ListAvailableApps() ([]SnapAppCandidate, error) {
 // 2. Return focus to winsnap so user can continue typing
 // If the winsnap window is invalid/closed, it will be recreated on the next loop tick.
 func (s *SnapService) WakeAttached() error {
+	if s.isDragGuardActive() {
+		return nil
+	}
+
 	s.mu.Lock()
 	w := s.win
 	target := s.currentTarget
@@ -342,25 +348,16 @@ func (s *SnapService) DetachToStandalone() error {
 	s.status.EnabledTargets = append([]string(nil), enabledTargets...)
 	s.status.State = SnapStateStandalone
 	s.touchLocked("")
-	stillHasTargets := len(enabledTargets) > 0
 	s.mu.Unlock()
 
-	// 4. If no other targets are enabled, stop the polling loop entirely.
-	//    Otherwise keep it running so it can detect and re-attach when another
-	//    enabled app becomes foreground.
-	if !stillHasTargets {
-		s.mu.Lock()
-		cancel := s.loopCancel
-		s.loopCancel = nil
-		s.mu.Unlock()
-		if cancel != nil {
-			cancel()
-		}
-	}
-	// If still has targets and loop is NOT running (shouldn't normally happen),
-	// ensure it is started.
-	if stillHasTargets {
-		_ = s.ensureRunning()
+	// 4. Always stop polling loop in standalone mode.
+	// Re-attach should only happen on explicit user action.
+	s.mu.Lock()
+	cancel := s.loopCancel
+	s.loopCancel = nil
+	s.mu.Unlock()
+	if cancel != nil {
+		cancel()
 	}
 
 	// 5. Emit state-changed event so frontend can update UI
@@ -578,6 +575,10 @@ func (s *SnapService) loop(ctx context.Context) {
 }
 
 func (s *SnapService) step() {
+	if s.isDragGuardActive() {
+		return
+	}
+
 	s.mu.Lock()
 	enabledTargets := append([]string(nil), s.enabledTargets...)
 	w := s.win
@@ -673,6 +674,20 @@ func (s *SnapService) step() {
 		return
 	}
 	s.attachTo(w, target)
+}
+
+func (s *SnapService) isDragGuardActive() bool {
+	v, ok := settings.GetValue(snapDragGuardUntilKey)
+	if !ok {
+		return false
+	}
+
+	untilMs, err := strconv.ParseInt(strings.TrimSpace(v), 10, 64)
+	if err != nil || untilMs <= 0 {
+		return false
+	}
+
+	return time.Now().UnixMilli() < untilMs
 }
 
 func (s *SnapService) hideOffscreen(w *application.WebviewWindow) {
