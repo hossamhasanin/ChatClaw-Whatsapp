@@ -152,10 +152,7 @@ const handleSave = async () => {
             <Globe class="size-4 text-muted-foreground" />
             <span class="text-sm">{{ t('settings.workspace.networkAccess') }}</span>
           </div>
-          <Switch
-            :checked="sandboxNetwork"
-            @update:checked="sandboxNetwork = $event"
-          />
+          <Switch v-model="sandboxNetwork" />
         </div>
         <p class="mt-2 text-xs text-muted-foreground">
           {{ t('settings.workspace.networkAccessDesc') }}

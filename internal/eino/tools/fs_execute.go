@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"time"
@@ -12,6 +13,18 @@ import (
 	"github.com/cloudwego/eino/components/tool"
 	"github.com/cloudwego/eino/components/tool/utils"
 )
+
+// writableRoots lists home-relative directories that common package managers
+// need write access to. These are added to the codex sandbox whitelist via
+// sandbox_workspace_write.writable_roots so that tools like npm, bun, pip,
+// yarn, etc. can use their caches without hitting "Operation not permitted".
+var writableRoots = []string{
+	".npm",
+	".bun",
+	".cache",
+	".local",
+	".yarn",
+}
 
 // BlockedCommands are shell commands that are always rejected.
 var BlockedCommands = []string{
@@ -45,7 +58,7 @@ func NewExecuteTool(cfg *FsToolsConfig) (tool.BaseTool, error) {
 
 			var cmd *exec.Cmd
 			if cfg.SandboxEnabled && cfg.CodexBin != "" {
-				cmd = buildCodexCommand(cfg.CodexBin, input.Command, workDir, cfg.SandboxNetworkEnabled)
+				cmd = buildCodexCommand(cfg, workDir, input.Command)
 			} else {
 				cmd = buildNativeCommand(input.Command)
 				cmd.Dir = workDir
@@ -116,19 +129,28 @@ func validateCommand(command string) error {
 	return nil
 }
 
-func buildCodexCommand(codexBin, command, workDir string, networkEnabled bool) *exec.Cmd {
+func buildCodexCommand(cfg *FsToolsConfig, workDir, command string) *exec.Cmd {
 	platform := "macos"
 	if runtime.GOOS == "linux" {
 		platform = "linux"
 	}
 
 	args := []string{"sandbox", platform, "--full-auto"}
-	if networkEnabled {
+
+	if cfg.SandboxNetworkEnabled {
 		args = append(args, "-c", "sandbox_workspace_write.network_access=true")
 	}
+
+	roots := make([]string, 0, len(writableRoots))
+	for _, rel := range writableRoots {
+		roots = append(roots, fmt.Sprintf("%q", filepath.Join(cfg.HomeDir, rel)))
+	}
+	args = append(args, "-c",
+		fmt.Sprintf("sandbox_workspace_write.writable_roots=[%s]", strings.Join(roots, ",")))
+
 	args = append(args, "--", "sh", "-c", command)
 
-	cmd := exec.Command(codexBin, args...)
+	cmd := exec.Command(cfg.CodexBin, args...)
 	cmd.Dir = workDir
 	return cmd
 }

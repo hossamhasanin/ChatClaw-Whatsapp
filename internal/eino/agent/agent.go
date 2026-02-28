@@ -335,19 +335,30 @@ func buildFilesystemSystemPrompt(homeDir, workDir string, sandboxEnabled, sandbo
 `, osName, shell, homeDir, workDir, workDir, workDir, homeDir)
 
 	if sandboxEnabled {
-		networkDesc := "Network access is **disabled** for executed commands."
+		networkDesc := "Network access is **disabled** for executed commands. Commands like curl, npm install, pip install will fail."
 		if sandboxNetworkEnabled {
-			networkDesc = "Network access is **enabled** for executed commands (e.g. npm install, curl, etc. will work)."
+			networkDesc = "Network access is **enabled** for executed commands (e.g. npm install, curl, pip install will work)."
 		}
 		prompt += fmt.Sprintf(`
 # Sandbox Mode
 
-- You are running in sandbox mode. All write operations are restricted to the working directory: %s
-- read_file, ls, glob, grep can read any path on the filesystem.
+You are running inside an OS-level sandbox. Understand these constraints **before** choosing commands:
+
+## Write Restrictions
+- All write operations are restricted to the working directory: %s
 - write_file, edit_file, patch_file can only write to paths within the working directory.
-- execute runs commands with the working directory as cwd; writing to paths outside the working directory will be denied by the OS.
+- execute runs commands with the working directory as cwd; writing to paths outside it will be denied by the OS.
+- read_file, ls, glob, grep can read any path on the filesystem (read is unrestricted).
+
+## Network
 - %s
-- Always create files and run commands within the working directory. Do not attempt to write outside it.
+
+## Best Practices in Sandbox
+- **Never use global installs** (e.g. "npm install -g", "pip install --user"). Global paths are outside the working directory and writes will be rejected. Use local/project-level installs instead (e.g. "npm install" in the project directory, "pip install --target .").
+- **Use npx / bunx** to run CLI tools without global installs (e.g. "npx create-vue@latest my-app" instead of installing @vue/cli globally).
+- **Always pass non-interactive flags** to avoid commands hanging on stdin: use "--yes", "--default", "-y", or pipe "echo" as needed (e.g. "npx create-vue@latest my-app --default", "npm init -y").
+- **All project files must be created inside the working directory.** Do not attempt to create files elsewhere.
+- If a command fails due to permission denied, it is likely trying to write outside the working directory. Retry with a local/project-scoped alternative.
 `, workDir, networkDesc)
 	}
 
