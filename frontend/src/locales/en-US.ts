@@ -144,6 +144,27 @@ export default {
       title: 'General Settings',
       language: 'Language',
       theme: 'Theme Color',
+      // Toolchain
+      toolchain: {
+        title: 'Extensions',
+        install: 'Install',
+        installing: 'Installing...',
+        installed: 'Installed',
+        notInstalled: 'Not Installed',
+        installFailed: 'Installation failed',
+        uv: {
+          name: 'Python Runtime',
+          description: 'Enables the AI assistant to write and run Python scripts for complex tasks.',
+        },
+        bun: {
+          name: 'JavaScript Runtime',
+          description: 'Enables the AI assistant to write and run JavaScript scripts for complex tasks.',
+        },
+        codex: {
+          name: 'Security Sandbox',
+          description: 'Runs commands in an isolated environment to protect your system from unintended changes.',
+        },
+      },
     },
     // Memory settings
     memory: {
@@ -460,6 +481,7 @@ export default {
         modeCodex: 'Codex Sandbox',
         modeNative: 'Native Execution',
         codexDesc: 'Execute commands in an OS-level sandbox provided by OpenAI Codex CLI. Commands can only write files within the working directory; the rest of the filesystem is read-only.',
+        codexNotInstalled: 'Security Sandbox is not installed yet. Sandbox mode is temporarily unavailable and will fall back to native execution. You can install it in Settings → General → Extensions.',
         nativeDesc: 'Execute commands directly on the host machine without sandbox isolation. Commands have full permissions of the current user.',
         networkAccess: 'Allow Network Access',
         networkAccessDesc: 'When enabled, commands inside the sandbox can access the network (e.g. npm install, pip install). When disabled, commands cannot reach the network, which is more secure.',

@@ -144,6 +144,27 @@ export default {
       title: '常规设置',
       language: '语言',
       theme: '主题颜色',
+      // 工具链
+      toolchain: {
+        title: '扩展组件',
+        install: '安装',
+        installing: '安装中...',
+        installed: '已安装',
+        notInstalled: '未安装',
+        installFailed: '安装失败',
+        uv: {
+          name: 'Python 运行环境',
+          description: '让 AI 助手能够编写和运行 Python 脚本来完成复杂任务。',
+        },
+        bun: {
+          name: 'JavaScript 运行环境',
+          description: '让 AI 助手能够编写和运行 JavaScript 脚本来完成复杂任务。',
+        },
+        codex: {
+          name: '安全沙盒',
+          description: '在隔离环境中执行命令，保护系统安全，防止误操作影响本机文件。',
+        },
+      },
     },
     // 长期记忆设置
     memory: {
@@ -457,6 +478,7 @@ export default {
         modeCodex: 'Codex 沙盒',
         modeNative: '本机执行',
         codexDesc: '使用 OpenAI Codex CLI 提供的 OS 级沙盒隔离执行命令。命令只能在工作目录内写入文件，外部文件系统为只读。',
+        codexNotInstalled: '安全沙盒尚未安装，沙盒模式暂时不可用，将自动回退到本机执行。可在「设置 → 常规设置 → 扩展组件」中手动安装。',
         nativeDesc: '直接在本机执行命令，无沙盒隔离。命令拥有当前用户的完整权限。',
         networkAccess: '允许网络访问',
         networkAccessDesc: '开启后，沙盒内的命令可以访问网络（如 npm install、pip install 等）。关闭时命令无法联网，更加安全。',

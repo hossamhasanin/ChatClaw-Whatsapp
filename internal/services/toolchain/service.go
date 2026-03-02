@@ -155,6 +155,7 @@ func (s *ToolchainService) InstallTool(name string) (*ToolStatus, error) {
 	s.app.Logger.Info("toolchain: installed successfully",
 		"tool", name, "version", latestVersion)
 
+	MarkInstalled(name)
 	st := s.getStatus(name)
 	s.emitStatus(name)
 	return &st, nil
@@ -184,6 +185,20 @@ func (s *ToolchainService) EnsureAll() {
 	}
 	wg.Wait()
 	s.app.Logger.Info("toolchain: all tools checked")
+	s.syncState()
+}
+
+// syncState refreshes the package-level state snapshot from actual binary checks.
+func (s *ToolchainService) syncState() {
+	binDir := s.BinDir()
+	installed := make(map[string]bool, len(registry))
+	for name, spec := range registry {
+		binPath := filepath.Join(binDir, spec.binaryName(runtime.GOOS))
+		if s.getInstalledVersion(binPath, spec.versionArgs) != "" {
+			installed[name] = true
+		}
+	}
+	SetState(binDir, installed)
 }
 
 // ---- Internal helpers ----
@@ -509,6 +524,7 @@ func extractVersion(s string) string {
 	s = strings.TrimPrefix(s, "bun-")
 	s = strings.TrimPrefix(s, "uv ")
 	s = strings.TrimPrefix(s, "rust-v")
+	s = strings.TrimPrefix(s, "codex-cli/")
 	s = strings.TrimPrefix(s, "codex/")
 	s = strings.TrimPrefix(s, "v")
 	if idx := strings.IndexAny(s, " \t("); idx > 0 {

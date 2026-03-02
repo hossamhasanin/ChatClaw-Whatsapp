@@ -299,7 +299,6 @@ func NewApp(opts Options) (app *application.App, cleanup func(), err error) {
 	// 注册工具链服务（管理 uv、bun 等外部工具的安装/更新，前端可调用）
 	toolchainService := toolchain.NewToolchainService(app)
 	app.RegisterService(application.NewService(toolchainService))
-	chatService.SetToolchainBinDir(toolchainService.BinDir())
 
 	// ========== macOS 应用菜单 ==========
 	if runtime.GOOS == "darwin" {

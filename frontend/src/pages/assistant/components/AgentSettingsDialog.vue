@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, ref, watch, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Trash2, ShieldCheck, Monitor, Globe, FolderOpen, RotateCcw } from 'lucide-vue-next'
+import { Events } from '@wailsio/runtime'
+import { Trash2, ShieldCheck, Monitor, Globe, FolderOpen, RotateCcw, AlertTriangle } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import LogoIcon from '@/assets/images/logo.svg'
@@ -37,6 +38,7 @@ import {
   ProvidersService,
   type ProviderWithModels,
 } from '@bindings/chatclaw/internal/services/providers'
+import * as ToolchainService from '@bindings/chatclaw/internal/services/toolchain/toolchainservice'
 
 type TabKey = 'model' | 'prompt' | 'workspace' | 'retrieval' | 'delete'
 
@@ -80,6 +82,7 @@ const sandboxMode = ref('codex')
 const sandboxNetwork = ref(true)
 const workDir = ref('')
 const defaultWorkDir = ref('')
+const codexInstalled = ref(false)
 
 const providersWithModels = ref<ProviderWithModels[]>([])
 const modelProviderId = ref('')
@@ -97,8 +100,27 @@ watch(
     void AgentsService.GetDefaultWorkDir().then((dir) => {
       defaultWorkDir.value = dir
     })
+    void ToolchainService.GetToolStatus('codex').then((status) => {
+      codexInstalled.value = status?.installed ?? false
+    })
   }
 )
+
+let unsubscribeToolchain: (() => void) | null = null
+
+onMounted(() => {
+  unsubscribeToolchain = Events.On('toolchain:status', (event: any) => {
+    const data = event?.data?.[0] ?? event?.data ?? event
+    if (data && data.name === 'codex') {
+      codexInstalled.value = !!data.installed
+    }
+  })
+})
+
+onUnmounted(() => {
+  unsubscribeToolchain?.()
+  unsubscribeToolchain = null
+})
 
 watch(
   () => props.agent,
@@ -678,6 +700,15 @@ const handleDelete = async () => {
                         : t('assistant.settings.workspace.nativeDesc')
                     }}
                   </p>
+                  <div
+                    v-if="sandboxMode === 'codex' && !codexInstalled"
+                    class="flex items-start gap-2 rounded-lg border border-border bg-muted/50 px-3 py-2.5 dark:border-white/10 dark:bg-white/5"
+                  >
+                    <AlertTriangle class="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
+                    <p class="text-xs text-muted-foreground">
+                      {{ t('assistant.settings.workspace.codexNotInstalled') }}
+                    </p>
+                  </div>
                 </div>
 
                 <div v-if="sandboxMode === 'codex'" class="flex flex-col gap-2">
