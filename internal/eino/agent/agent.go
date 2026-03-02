@@ -16,6 +16,7 @@ import (
 
 	"chatclaw/internal/eino/tools"
 	"chatclaw/internal/errs"
+	"chatclaw/internal/services/settings"
 
 	"github.com/cloudwego/eino-ext/components/model/claude"
 	einogemini "github.com/cloudwego/eino-ext/components/model/gemini"
@@ -477,8 +478,10 @@ func BuildMiddlewares(ctx context.Context, config Config, memBackend *filesystem
 		middlewares = append(middlewares, reductionMw)
 	}
 
-	if skillMw, ok := buildSkillMiddleware(ctx); ok {
-		middlewares = append(middlewares, skillMw)
+	if settings.GetBool("skills_enabled", true) {
+		if skillMw, ok := buildSkillMiddleware(ctx); ok {
+			middlewares = append(middlewares, skillMw)
+		}
 	}
 
 	return middlewares
@@ -582,16 +585,24 @@ func buildFsToolsConfig(config Config, memBackend *filesystem.InMemoryBackend) *
 	}
 }
 
-// buildSkillMiddleware creates the skill middleware.
-// Skills are stored under $HOME/.agents/skills/<skill-name>/SKILL.md.
-func buildSkillMiddleware(ctx context.Context) (adk.AgentMiddleware, bool) {
+// SkillsDir returns the directory where agent skills are stored.
+func SkillsDir() string {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
-		log.Printf("[agent] failed to get home dir for skills: %v", err)
+		return ""
+	}
+	return filepath.Join(homeDir, ".chatclaw", "skills")
+}
+
+// buildSkillMiddleware creates the skill middleware.
+// Skills are stored under $HOME/.chatclaw/skills/<skill-name>/SKILL.md.
+func buildSkillMiddleware(ctx context.Context) (adk.AgentMiddleware, bool) {
+	skillsDir := SkillsDir()
+	if skillsDir == "" {
+		log.Printf("[agent] failed to get home dir for skills")
 		return adk.AgentMiddleware{}, false
 	}
 
-	skillsDir := filepath.Join(homeDir, ".agents", "skills")
 	if err := os.MkdirAll(skillsDir, 0o755); err != nil {
 		log.Printf("[agent] failed to create skills directory %s: %v", skillsDir, err)
 		return adk.AgentMiddleware{}, false
