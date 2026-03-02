@@ -126,13 +126,13 @@ const allModels: Record<AIModel['id'], AIModel> = {
     displayName: '元宝',
     url: 'https://yuanbao.tencent.com/',
   },
-  glm: {
-    id: 'glm',
-    name: 'glm',
-    icon: 'model-glm',
-    displayName: 'GLM',
-    url: 'https://www.zhipuai.cn/',
-  },
+  // glm: {
+  //   id: 'glm',
+  //   name: 'glm',
+  //   icon: 'model-glm',
+  //   displayName: 'GLM',
+  //   url: 'https://www.zhipuai.cn/',
+  // },
   openai: {
     id: 'openai',
     name: 'chatgpt',
@@ -165,7 +165,7 @@ const chineseFirstModelOrder: AIModel['id'][] = [
   'qwen',
   'kimi',
   'yuanbao',
-  'glm',
+  // 'glm',
   'openai',
   'google',
   'anthropic',
@@ -183,7 +183,7 @@ const englishFirstModelOrder: AIModel['id'][] = [
   'qwen',
   'kimi',
   'yuanbao',
-  'glm',
+  // 'glm',
 ]
 
 

@@ -107,43 +107,6 @@ func (s *MultiaskService) Initialize(windowTitle string) error {
 // Standard Chrome User-Agent for sites that block embedded browsers
 const chromeUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
 
-// getCustomUserAgent returns a custom User-Agent for specific sites that block embedded browsers
-func getCustomUserAgent(url string) string {
-	// Sites that require standard browser User-Agent
-	blockedSites := []string{
-		"yuanbao.tencent.com", // Tencent Yuanbao
-		"kimi.com",           // Kimi AI
-		"zhipuai.cn",         // GLM / Zhipu
-	}
-
-	for _, site := range blockedSites {
-		if containsHost(url, site) {
-			return chromeUserAgent
-		}
-	}
-	return ""
-}
-
-// containsHost checks if URL contains the given host
-func containsHost(url, host string) bool {
-	return len(url) > 0 && len(host) > 0 &&
-		(contains(url, "://"+host) || contains(url, "://www."+host))
-}
-
-// contains is a simple substring check
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || len(s) > len(substr) && findSubstring(s, substr))
-}
-
-func findSubstring(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
-}
-
 // CreatePanel 创建 WebView 面板
 func (s *MultiaskService) CreatePanel(id, name, displayName, url string, bounds PanelBounds) error {
 	s.app.Logger.Info("[MultiaskService] CreatePanel called",
@@ -177,30 +140,27 @@ func (s *MultiaskService) CreatePanel(id, name, displayName, url string, bounds 
 		"height", bounds.Height,
 	)
 
-	// Check if this site needs a custom User-Agent
-	userAgent := getCustomUserAgent(url)
-	if userAgent != "" {
-		s.app.Logger.Info("[MultiaskService] Using custom User-Agent for site",
-			"id", id,
-			"url", url,
-		)
-	}
-
 	panel := s.manager.NewPanel(webviewpanel.WebviewPanelOptions{
-		Name:      id,
-		X:         bounds.X,
-		Y:         bounds.Y,
-		Width:     bounds.Width,
-		Height:    bounds.Height,
-		URL:       url,
-		Visible:   &visible,
-		ZIndex:    1,
-		UserAgent: userAgent,
+		Name:                   id,
+		X:                      bounds.X,
+		Y:                      bounds.Y,
+		Width:                  bounds.Width,
+		Height:                 bounds.Height,
+		URL:                    url,
+		Visible:                &visible,
+		ZIndex:                 1,
+		UserAgent:              chromeUserAgent,
+		DevToolsEnabled:        boolPtr(true),
+		OpenInspectorOnStartup: true,
 	})
 
 	s.panels[id] = panel
 	s.app.Logger.Info("[MultiaskService] Panel created successfully", "id", id)
 	return nil
+}
+
+func boolPtr(v bool) *bool {
+	return &v
 }
 
 // UpdatePanelBounds 更新面板位置和大小
@@ -820,7 +780,23 @@ func (s *MultiaskService) SendMessageToPanel(id, message string) error {
 })();
 `, message)
 
+	navigationInterceptorJS := `
+	(function() {
+	    window.open = function(url) { window.location.href = url; return window; };
+	    document.addEventListener('click', (e) => {
+	        let a = e.target.closest('a');
+	        if (a && a.target === '_blank') {
+	            e.preventDefault();
+	            window.location.href = a.href;
+	        }
+	    }, true);
+        document.body.style.backgroundColor = 'red';
+        document.body.style.border = '1px solid yellow';
+	})();
+	`
+	panel.ExecJS(navigationInterceptorJS)
 	panel.ExecJS(js)
+	panel.OpenDevTools()
 	return nil
 }
 
