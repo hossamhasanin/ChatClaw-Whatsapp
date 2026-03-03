@@ -249,9 +249,9 @@ func (p *windowsPanelImpl) setupChromium() {
 	p.chromium.Embed(p.hwnd)
 	controller := p.chromium.GetController()
 	if controller != nil {
-		core := controller.GetCoreWebView2()
+		core, _ := controller.GetCoreWebView2() // GetCoreWebView2 returns (core, error); discard error here
 		if core != nil {
-			settings, _ := core.GetSettings()
+			settings, _ := core.GetSettings() // GetSettings returns (settings, error); discard error here
 			if p.panel.options.UserAgent != "" {
 				settings.PutUserAgent(p.panel.options.UserAgent)
 			}
