@@ -155,17 +155,11 @@ func (s *ChatService) runGenerationCore(ctx context.Context, gc *generationConte
 		return
 	}
 
-	s.app.Logger.Info("[llm] start", "conv", conversationID, "tab", gc.tabID, "req", gc.requestID,
-		"provider_id", providerConfig.ProviderID, "provider_type", providerConfig.Type,
-		"model", agentConfig.ModelID, "endpoint", providerConfig.APIEndpoint, "messages", len(messages),
-		"instruction", truncateRunes(agentConfig.Instruction, llmLogMaxInstruction))
-	s.app.Logger.Info("[llm] context", "conv", conversationID, "req", gc.requestID, "context", summarizeMessagesForLog(messages, 12, llmLogMaxContent))
-
 	// Build extra tools and handlers
 	extraTools, extraHandlers := s.buildExtras(ctx, gc)
 
 	agentConfig.Provider = providerConfig
-	agentResult, err := einoagent.NewChatModelAgent(ctx, agentConfig, s.toolRegistry, s.bgProcessManager, extraTools, extraHandlers, s.app.Logger)
+	agentResult, err := einoagent.NewChatModelAgent(ctx, agentConfig, s.toolRegistry, s.bgProcessManager, extraTools, extraHandlers, s.app.Logger, len(messages))
 	if err != nil {
 		gc.emitError("error.chat_agent_create_failed", map[string]any{"Error": err.Error()})
 		s.updateMessageStatus(db, assistantMsg.ID, StatusError, err.Error(), "")
@@ -479,9 +473,6 @@ func (s *ChatService) processStream(ctx context.Context, gc *generationContext, 
 
 	if ctx.Err() != nil {
 		s.updateMessageFinal(gc.db, assistantMsg.ID, ss.contentBuilder.String(), ss.thinkingBuilder.String(), ss.toolCallsStr(), ss.segmentsStr(), StatusCancelled, "", "cancelled", ss.inputTokens, ss.outputTokens)
-		s.app.Logger.Info("[llm] complete", "conv", gc.conversationID, "tab", gc.tabID, "req", gc.requestID,
-			"status", StatusCancelled, "finish", "cancelled", "input_tokens", ss.inputTokens,
-			"output_tokens", ss.outputTokens, "content_len", len(ss.contentBuilder.String()), "thinking_len", len(ss.thinkingBuilder.String()))
 		gc.emit(EventChatStopped, ChatStoppedEvent{
 			ChatEvent: gc.chatEvent(assistantMsg.ID),
 			Status:    StatusCancelled,
@@ -490,12 +481,6 @@ func (s *ChatService) processStream(ctx context.Context, gc *generationContext, 
 	}
 
 	s.updateMessageFinal(gc.db, assistantMsg.ID, ss.contentBuilder.String(), ss.thinkingBuilder.String(), ss.toolCallsStr(), ss.segmentsStr(), StatusSuccess, "", ss.finishReason, ss.inputTokens, ss.outputTokens)
-
-	s.app.Logger.Info("[llm] complete", "conv", gc.conversationID, "tab", gc.tabID, "req", gc.requestID,
-		"status", StatusSuccess, "finish", ss.finishReason, "input_tokens", ss.inputTokens,
-		"output_tokens", ss.outputTokens, "content_len", len(ss.contentBuilder.String()),
-		"thinking_len", len(ss.thinkingBuilder.String()), "tool_calls_len", len(ss.toolCallsStr()))
-	s.app.Logger.Info("[llm] output", "conv", gc.conversationID, "req", gc.requestID, "output", truncateRunes(ss.contentBuilder.String(), llmLogMaxOutput))
 
 	gc.emit(EventChatComplete, ChatCompleteEvent{
 		ChatEvent: gc.chatEvent(assistantMsg.ID),
@@ -570,7 +555,6 @@ func (s *ChatService) processNonStreamingOutput(gc *generationContext, ss *strea
 				}
 			}
 		}
-		s.app.Logger.Info("[llm] tool_result", "conv", gc.conversationID, "tab", gc.tabID, "req", gc.requestID, "tool", toolName, "call_id", msg.ToolCallID, "result_len", len(msg.Content), "result", truncateRunes(msg.Content, llmLogMaxToolResult))
 		gc.emit(EventChatTool, ChatToolEvent{
 			ChatEvent:  gc.chatEvent(ss.assistantMsg.ID),
 			Type:       "result",
@@ -649,7 +633,6 @@ func (s *ChatService) emitToolCallChunks(gc *generationContext, ss *streamState,
 		if args != "" && !json.Valid([]byte(args)) {
 			s.app.Logger.Warn("[chat] tool arguments not valid JSON", "conv", gc.conversationID, "tab", gc.tabID, "req", gc.requestID, "tool", toolName, "call_id", resolvedID, "args", args)
 		}
-		s.app.Logger.Info("[llm] tool_call", "conv", gc.conversationID, "tab", gc.tabID, "req", gc.requestID, "tool", toolName, "call_id", resolvedID, "args", truncateRunes(args, 300))
 		gc.emit(EventChatTool, ChatToolEvent{
 			ChatEvent:  gc.chatEvent(ss.assistantMsg.ID),
 			Type:       "call",
@@ -743,7 +726,7 @@ func (s *ChatService) updateMessageStatus(db *bun.DB, messageID int64, status, e
 		Set("finish_reason = ?", finishReason).
 		Where("id = ?", messageID).
 		Exec(ctx); err != nil {
-		s.app.Logger.Error("update message status failed", "messageID", messageID, "error", err)
+		s.app.Logger.Error("[chat] update message status failed", "messageID", messageID, "error", err)
 	}
 }
 
@@ -765,6 +748,6 @@ func (s *ChatService) updateMessageFinal(db *bun.DB, messageID int64, content, t
 		Set("output_tokens = ?", outputTokens).
 		Where("id = ?", messageID).
 		Exec(ctx); err != nil {
-		s.app.Logger.Error("update message final failed", "messageID", messageID, "error", err)
+		s.app.Logger.Error("[chat] update message final failed", "messageID", messageID, "error", err)
 	}
 }

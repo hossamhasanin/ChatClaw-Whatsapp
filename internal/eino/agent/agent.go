@@ -12,6 +12,7 @@ import (
 	"runtime"
 	"strconv"
 
+	"chatclaw/internal/define"
 	"chatclaw/internal/eino/tools"
 	"chatclaw/internal/errs"
 
@@ -86,7 +87,9 @@ type AgentResult struct {
 }
 
 // NewChatModelAgent creates an ADK ChatModelAgent with tools and handlers.
-func NewChatModelAgent(ctx context.Context, config Config, toolRegistry *tools.ToolRegistry, bgMgr *tools.BgProcessManager, extraTools []tool.BaseTool, extraHandlers []adk.ChatModelAgentMiddleware, logger *slog.Logger) (*AgentResult, error) {
+// messageCount is the number of historical messages in the conversation;
+// pass 1 (first user message only) to enable one-time system prompt logging.
+func NewChatModelAgent(ctx context.Context, config Config, toolRegistry *tools.ToolRegistry, bgMgr *tools.BgProcessManager, extraTools []tool.BaseTool, extraHandlers []adk.ChatModelAgentMiddleware, logger *slog.Logger, messageCount int) (*AgentResult, error) {
 	chatModel, err := CreateChatModel(ctx, config)
 	if err != nil {
 		return nil, err
@@ -132,7 +135,7 @@ func NewChatModelAgent(ctx context.Context, config Config, toolRegistry *tools.T
 		}
 	}
 
-	agentConfig.Handlers = buildHandlers(ctx, backend, config, chatModel, extraHandlers, logger)
+	agentConfig.Handlers = buildHandlers(ctx, backend, config, chatModel, extraHandlers, logger, messageCount)
 
 	agent, err := adk.NewChatModelAgent(ctx, agentConfig)
 	if err != nil {
@@ -149,7 +152,7 @@ func NewChatModelAgent(ctx context.Context, config Config, toolRegistry *tools.T
 }
 
 // buildHandlers creates all ChatModelAgentMiddleware handlers.
-func buildHandlers(ctx context.Context, b *tools.Backend, config Config, chatModel model.BaseChatModel, extraHandlers []adk.ChatModelAgentMiddleware, logger *slog.Logger) []adk.ChatModelAgentMiddleware {
+func buildHandlers(ctx context.Context, b *tools.Backend, config Config, chatModel model.BaseChatModel, extraHandlers []adk.ChatModelAgentMiddleware, logger *slog.Logger, messageCount int) []adk.ChatModelAgentMiddleware {
 	var handlers []adk.ChatModelAgentMiddleware
 
 	// System prompt injection
@@ -194,6 +197,9 @@ func buildHandlers(ctx context.Context, b *tools.Backend, config Config, chatMod
 	if h := buildSkillHandler(ctx, logger); h != nil {
 		handlers = append(handlers, h)
 	}
+
+	// Logging handler goes last so BeforeAgent sees the fully-assembled instruction.
+	handlers = append(handlers, newLoggingHandler(logger, messageCount <= 1))
 
 	return handlers
 }
@@ -356,7 +362,7 @@ func resolveCodexBin() string {
 	if runtime.GOOS == "windows" {
 		binName += ".exe"
 	}
-	candidate := filepath.Join(cfgDir, appDataDir, "bin", binName)
+	candidate := filepath.Join(cfgDir, define.AppID, "bin", binName)
 	if _, err := os.Stat(candidate); err == nil {
 		return candidate
 	}
