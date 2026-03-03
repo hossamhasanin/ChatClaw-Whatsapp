@@ -157,7 +157,7 @@ func (s *MultiaskService) CreatePanel(id, name, displayName, url string, bounds 
 		Visible:                &visible,
 		ZIndex:                 1,
 		UserAgent:              chromeUserAgent,
-        // JS:                     navigatorJS,
+        // JS:                     navigatorJS, //不生效
 		// DevToolsEnabled:        boolPtr(true),
 		// OpenInspectorOnStartup: true,
 	})
