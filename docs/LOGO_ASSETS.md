@@ -2,9 +2,22 @@
 
 > 本文档记录龙虾图标的 PNG 资源位置，以及以后更换图标时需要修改的前端文件，方便统一维护。
 
+
+### 0. 应用图标
+
+应用图标：
+因为在window 上透明图标不明显，所以window上单独一个图标样式（有背景有颜色的），其他的是 无背景有颜色的样式
+
+window在`build\appicon.png`  使用的（有背景有颜色）与`src/assets/images/logo-app-colored.png` 一样的
+
+其他在`build\sysicon.png` 使用的（无背景有颜色）与`src/assets/images/logo-floatingball.png` 一样的
+
+需要都替换，打包时候才能使用对应的图标
+
+
 ### 1. 图标文件路径约定
 
-所有图标均放在 `src/assets/images/` 目录下（相对于 `frontend`）。
+所有前台图标均放在 `src/assets/images/` 目录下（相对于 `frontend`）。
 
 - **应用主图标（有背景有颜色）**  
   - 路径：`src/assets/images/logo-app-colored.png`  
