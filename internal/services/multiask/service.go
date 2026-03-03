@@ -1,11 +1,11 @@
 package multiask
 
 import (
+	"chatclaw/pkg/webviewpanel"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
-    "strings"
-	"chatclaw/pkg/webviewpanel"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
@@ -104,7 +104,6 @@ func (s *MultiaskService) Initialize(windowTitle string) error {
 	return nil
 }
 
-
 // CreatePanel 创建 WebView 面板
 func (s *MultiaskService) CreatePanel(id, name, displayName, url string, bounds PanelBounds) error {
 	s.app.Logger.Info("[MultiaskService] CreatePanel called",
@@ -138,21 +137,21 @@ func (s *MultiaskService) CreatePanel(id, name, displayName, url string, bounds 
 		"height", bounds.Height,
 	)
 
-    // Standard Chrome User-Agent for sites that block embedded browsers
-    chromeUserAgent := ""
-    if strings.Contains(url, "yuanbao.tencent.com") {
-        chromeUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
-    }
-    panel := s.manager.NewPanel(webviewpanel.WebviewPanelOptions{
-		Name:                   id,
-		X:                      bounds.X,
-		Y:                      bounds.Y,
-		Width:                  bounds.Width,
-		Height:                 bounds.Height,
-		URL:                    url,
-		Visible:                &visible,
-		ZIndex:                 1,
-		UserAgent:              chromeUserAgent,
+	// Standard Chrome User-Agent for sites that block embedded browsers
+	chromeUserAgent := ""
+	if strings.Contains(url, "yuanbao.tencent.com") {
+		chromeUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+	}
+	panel := s.manager.NewPanel(webviewpanel.WebviewPanelOptions{
+		Name:      id,
+		X:         bounds.X,
+		Y:         bounds.Y,
+		Width:     bounds.Width,
+		Height:    bounds.Height,
+		URL:       url,
+		Visible:   &visible,
+		ZIndex:    1,
+		UserAgent: chromeUserAgent,
 		// DevToolsEnabled:        boolPtr(true),
 		// OpenInspectorOnStartup: true,
 	})
@@ -783,21 +782,20 @@ func (s *MultiaskService) SendMessageToPanel(id, message string) error {
 })();
 `, message)
 
-	navigationInterceptorJS := `
-	(function() {
-	    window.open = function(url) { window.location.href = url; return window; };
-	    document.addEventListener('click', (e) => {
-	        let a = e.target.closest('a');
-	        if (a && a.target === '_blank') {
-	            e.preventDefault();
-	            window.location.href = a.href;
-	        }
-	    }, true);
-	})();
-	`
-	panel.ExecJS(navigationInterceptorJS)
+	// navigationInterceptorJS := `
+	// (function() {
+	//     window.open = function(url) { window.location.href = url; return window; };
+	//     document.addEventListener('click', (e) => {
+	//         let a = e.target.closest('a');
+	//         if (a && a.target === '_blank') {
+	//             e.preventDefault();
+	//             window.location.href = a.href;
+	//         }
+	//     }, true);
+	// })();
+	// `
+	// panel.ExecJS(navigationInterceptorJS)
 	panel.ExecJS(js)
-	panel.OpenDevTools()
 	return nil
 }
 
