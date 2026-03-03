@@ -782,19 +782,19 @@ func (s *MultiaskService) SendMessageToPanel(id, message string) error {
 })();
 `, message)
 
-	// navigationInterceptorJS := `
-	// (function() {
-	//     window.open = function(url) { window.location.href = url; return window; };
-	//     document.addEventListener('click', (e) => {
-	//         let a = e.target.closest('a');
-	//         if (a && a.target === '_blank') {
-	//             e.preventDefault();
-	//             window.location.href = a.href;
-	//         }
-	//     }, true);
-	// })();
-	// `
-	// panel.ExecJS(navigationInterceptorJS)
+	navigationInterceptorJS := `
+	(function() {
+	    window.open = function(url) { window.location.href = url; return window; };
+	    document.addEventListener('click', (e) => {
+	        let a = e.target.closest('a');
+	        if (a && a.target === '_blank') {
+	            e.preventDefault();
+	            window.location.href = a.href;
+	        }
+	    }, true);
+	})();
+	`
+	panel.ExecJS(navigationInterceptorJS)
 	panel.ExecJS(js)
 	return nil
 }
