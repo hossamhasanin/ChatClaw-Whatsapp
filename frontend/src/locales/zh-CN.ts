@@ -71,6 +71,8 @@ export default {
     taskUpdate: { name: '更新任务' },
     taskList: { name: '任务列表' },
     skill: { name: '加载技能' },
+    writeTodos: { name: '任务规划' },
+    task: { name: '子任务' },
   },
   winsnap: {
     title: 'ChatClaw',

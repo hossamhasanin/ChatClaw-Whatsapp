@@ -20,9 +20,9 @@ import (
 
 	"github.com/cloudwego/eino/adk"
 	"github.com/cloudwego/eino/adk/middlewares/patchtoolcalls"
-	"github.com/cloudwego/eino/adk/middlewares/plantask"
 	"github.com/cloudwego/eino/adk/middlewares/reduction"
 	"github.com/cloudwego/eino/adk/middlewares/summarization"
+	"github.com/cloudwego/eino/adk/prebuilt/deep"
 	"github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/components/tool"
 	"github.com/cloudwego/eino/compose"
@@ -37,7 +37,6 @@ const (
 	einoMetaDir    = ".eino"            // per-session metadata directory under WorkDir
 	sessionsSubdir = "sessions"         // subdirectory for per-agent/conversation working dirs
 	reductionDir   = "reduction"        // reduction middleware offload directory
-	tasksDir       = "tasks"            // plantask middleware data directory
 	transcriptFile = "transcript.jsonl" // summarization transcript filename
 	codexBinName   = "codex"            // codex sandbox binary name (without .exe)
 	sandboxCodex   = "codex"            // SandboxMode value for codex sandbox
@@ -84,11 +83,12 @@ type Config struct {
 // AgentResult holds the created agent and a cleanup function that should be
 // called (typically via defer) when the agent is no longer needed.
 type AgentResult struct {
-	Agent   adk.Agent
+	Agent   adk.ResumableAgent
 	Cleanup func()
 }
 
-// NewChatModelAgent creates an ADK ChatModelAgent with tools and handlers.
+// NewChatModelAgent creates a DeepAgent with built-in WriteTodos, TaskTool,
+// and a general-purpose SubAgent, backed by the project's filesystem Backend.
 // messageCount is the number of historical messages in the conversation;
 // pass 1 (first user message only) to enable one-time system prompt logging.
 func NewChatModelAgent(ctx context.Context, config Config, toolRegistry *tools.ToolRegistry, bgMgr *tools.BgProcessManager, extraTools []tool.BaseTool, extraHandlers []adk.ChatModelAgentMiddleware, logger *slog.Logger, messageCount int) (*AgentResult, error) {
@@ -112,35 +112,48 @@ func NewChatModelAgent(ctx context.Context, config Config, toolRegistry *tools.T
 	}
 
 	backend := buildBackend(config, logger)
-	fsTools := BuildFsTools(backend, bgMgr, logger)
 
-	baseTools := make([]tool.BaseTool, 0, len(enabledTools)+len(fsTools)+len(extraTools)+1)
-	baseTools = append(baseTools, enabledTools...)
-	baseTools = append(baseTools, browserTool)
-	baseTools = append(baseTools, fsTools...)
-	baseTools = append(baseTools, extraTools...)
+	// Build user-provided tools (registry + browser + bg-execute + extras).
+	// Filesystem tools (read_file, write_file, edit_file, glob, grep, execute)
+	// are handled internally by deep.Config.Backend/Shell.
+	bgTool, bgErr := tools.NewBgExecuteTool(backend, bgMgr)
 
-	agentConfig := &adk.ChatModelAgentConfig{
-		Name:          config.Name,
-		Description:   "AI Assistant",
-		Instruction:   config.Instruction,
-		Model:         chatModel,
-		MaxIterations: UnlimitedIterations,
+	userTools := make([]tool.BaseTool, 0, len(enabledTools)+len(extraTools)+2)
+	userTools = append(userTools, enabledTools...)
+	userTools = append(userTools, browserTool)
+	if bgErr == nil {
+		userTools = append(userTools, bgTool)
+	} else {
+		logger.Warn("[agent] failed to create execute_background tool", "error", bgErr)
 	}
+	userTools = append(userTools, extraTools...)
 
-	if len(baseTools) > 0 {
-		agentConfig.ToolsConfig = adk.ToolsConfig{
+	var toolsConfig adk.ToolsConfig
+	if len(userTools) > 0 {
+		toolsConfig = adk.ToolsConfig{
 			ToolsNodeConfig: compose.ToolsNodeConfig{
-				Tools:               baseTools,
+				Tools:               userTools,
 				ToolCallMiddlewares: []compose.ToolMiddleware{ErrorCatchingToolMiddleware(logger)},
-				UnknownToolsHandler: unknownToolsHandler(baseTools, logger),
+				UnknownToolsHandler: unknownToolsHandler(userTools, logger),
 			},
 		}
 	}
 
-	agentConfig.Handlers = buildHandlers(ctx, backend, config, chatModel, extraHandlers, logger, messageCount)
+	handlers := buildHandlers(ctx, backend, config, chatModel, extraHandlers, logger, messageCount)
 
-	agent, err := adk.NewChatModelAgent(ctx, agentConfig)
+	deepCfg := &deep.Config{
+		Name:         config.Name,
+		Description:  "AI Assistant",
+		Instruction:  config.Instruction,
+		ChatModel:    chatModel,
+		MaxIteration: UnlimitedIterations,
+		Backend:      backend,
+		Shell:        backend,
+		ToolsConfig:  toolsConfig,
+		Handlers:     handlers,
+	}
+
+	agent, err := deep.New(ctx, deepCfg)
 	if err != nil {
 		browserTool.Close()
 		return nil, err
@@ -191,17 +204,14 @@ func buildHandlers(ctx context.Context, b *tools.Backend, config Config, chatMod
 		handlers = append(handlers, h)
 	}
 
-	taskPath := filepath.Join(einoDir, tasksDir)
-	_ = os.MkdirAll(taskPath, 0o755)
-	if h := buildPlantaskHandler(ctx, b, taskPath, logger); h != nil {
-		handlers = append(handlers, h)
-	}
-
 	if config.SkillsEnabled {
 		if h := buildSkillHandler(ctx, b, logger); h != nil {
 			handlers = append(handlers, h)
 		}
 	}
+
+	// Interrupt handler for dangerous commands in native mode.
+	handlers = append(handlers, NewInterruptHandler(b))
 
 	// Logging handler goes last so BeforeAgent sees the fully-assembled instruction.
 	handlers = append(handlers, newLoggingHandler(logger, messageCount <= 1))
@@ -257,56 +267,6 @@ func buildSummarizationHandler(ctx context.Context, chatModel model.BaseChatMode
 		return nil
 	}
 	return mw
-}
-
-func buildPlantaskHandler(ctx context.Context, b *tools.Backend, taskDir string, logger *slog.Logger) adk.ChatModelAgentMiddleware {
-	mw, err := plantask.New(ctx, &plantask.Config{
-		Backend: b,
-		BaseDir: taskDir,
-	})
-	if err != nil {
-		logger.Warn("[agent] failed to create plantask handler", "error", err)
-		return nil
-	}
-	return mw
-}
-
-// BuildFsTools creates all filesystem tools backed by a single Backend.
-func BuildFsTools(b *tools.Backend, bgMgr *tools.BgProcessManager, logger *slog.Logger) []tool.BaseTool {
-	var fsTools []tool.BaseTool
-	builders := []func(*tools.Backend) (tool.BaseTool, error){
-		tools.NewLsTool,
-		tools.NewReadFileTool,
-		tools.NewWriteFileTool,
-		tools.NewEditFileTool,
-		tools.NewPatchFileTool,
-		tools.NewGlobTool,
-		tools.NewGrepTool,
-	}
-	for _, build := range builders {
-		t, err := build(b)
-		if err != nil {
-			logger.Warn("[agent] failed to create fs tool", "error", err)
-			continue
-		}
-		fsTools = append(fsTools, t)
-	}
-
-	execTool, err := tools.NewExecuteTool(b, bgMgr)
-	if err != nil {
-		logger.Warn("[agent] failed to create execute tool", "error", err)
-	} else {
-		fsTools = append(fsTools, execTool)
-	}
-
-	bgTool, err := tools.NewBgExecuteTool(b, bgMgr)
-	if err != nil {
-		logger.Warn("[agent] failed to create execute_background tool", "error", err)
-	} else {
-		fsTools = append(fsTools, bgTool)
-	}
-
-	return fsTools
 }
 
 // buildBackend creates the unified filesystem backend.

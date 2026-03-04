@@ -66,6 +66,8 @@ const getToolDisplayName = (toolName: string) => {
     TaskUpdate: t('tools.taskUpdate.name'),
     TaskList: t('tools.taskList.name'),
     skill: t('tools.skill.name'),
+    write_todos: t('tools.writeTodos.name'),
+    task: t('tools.task.name'),
   }
   return nameMap[toolName] ?? toolName
 }

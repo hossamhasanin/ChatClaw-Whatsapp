@@ -21,7 +21,6 @@ import (
 	"time"
 
 	"github.com/cloudwego/eino/adk/filesystem"
-	"github.com/cloudwego/eino/adk/middlewares/plantask"
 )
 
 // BackendConfig configures the filesystem backend.
@@ -33,8 +32,8 @@ type BackendConfig struct {
 	ToolchainBinDir string
 }
 
-// Backend implements filesystem.Backend, filesystem.Shell, and plantask's
-// Delete. In sandbox mode (CodexBin != ""), write and execute operations
+// Backend implements filesystem.Backend and filesystem.Shell.
+// In sandbox mode (CodexBin != ""), write and execute operations
 // are routed through codex-cli for OS-level isolation.
 type Backend struct {
 	homeDir         string
@@ -423,18 +422,6 @@ func (b *Backend) Execute(_ context.Context, input *filesystem.ExecuteRequest) (
 		ExitCode:  &exitCode,
 		Truncated: truncated,
 	}, nil
-}
-
-// ---------------------------------------------------------------------------
-// plantask.Backend — Delete
-// ---------------------------------------------------------------------------
-
-func (b *Backend) Delete(_ context.Context, req *plantask.DeleteRequest) error {
-	err := os.Remove(req.FilePath)
-	if os.IsNotExist(err) {
-		return nil
-	}
-	return err
 }
 
 // ---------------------------------------------------------------------------

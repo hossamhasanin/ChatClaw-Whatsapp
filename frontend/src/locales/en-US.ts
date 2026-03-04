@@ -71,6 +71,8 @@ export default {
     taskUpdate: { name: 'Update Task' },
     taskList: { name: 'Task List' },
     skill: { name: 'Load Skill' },
+    writeTodos: { name: 'Task Planning' },
+    task: { name: 'Sub Task' },
   },
   winsnap: {
     title: 'ChatClaw',

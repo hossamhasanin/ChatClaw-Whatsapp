@@ -166,14 +166,28 @@ func (s *ChatService) runGenerationCore(ctx context.Context, gc *generationConte
 		s.updateMessageStatus(db, assistantMsg.ID, StatusError, err.Error(), "")
 		return
 	}
-	defer agentResult.Cleanup()
 
 	runner := adk.NewRunner(ctx, adk.RunnerConfig{
 		Agent:           agentResult.Agent,
-		EnableStreaming: true,
+		EnableStreaming:  true,
+		CheckPointStore: s.checkpointStore,
 	})
 
-	s.processStream(ctx, gc, runner, assistantMsg, messages)
+	checkpointID := fmt.Sprintf("conv_%d_%s", conversationID, gc.requestID)
+	result := s.processStream(ctx, gc, runner, assistantMsg, messages, checkpointID)
+
+	if result.interrupted {
+		if existing, ok := s.activeGenerations.Load(conversationID); ok {
+			ag := existing.(*activeGeneration)
+			ag.runner = runner
+			ag.checkpointID = checkpointID
+			ag.interrupted = true
+			ag.agentCleanup = agentResult.Cleanup
+		}
+		return
+	}
+
+	agentResult.Cleanup()
 
 	if agentExtras.MemoryEnabled {
 		go func() {
@@ -181,6 +195,65 @@ func (s *ChatService) runGenerationCore(ctx context.Context, gc *generationConte
 			memory.RunMemoryExtraction(context.Background(), s.app, conversationID)
 		}()
 	}
+}
+
+// resumeGeneration continues a previously interrupted generation.
+func (s *ChatService) resumeGeneration(gen *activeGeneration, conversationID int64) {
+	db, err := s.db()
+	if err != nil {
+		s.app.Logger.Error("[chat] resume: failed to get db", "conv", conversationID, "error", err)
+		return
+	}
+
+	gc := &generationContext{
+		service:        s,
+		db:             db,
+		conversationID: conversationID,
+		tabID:          gen.tabID,
+		requestID:      gen.requestID,
+	}
+
+	assistantMsg := &messageModel{
+		ConversationID: conversationID,
+		Role:           RoleAssistant,
+		Content:        "",
+		Status:         StatusStreaming,
+		ToolCalls:      "[]",
+	}
+	dbCtx, dbCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	if _, insertErr := db.NewInsert().Model(assistantMsg).Exec(dbCtx); insertErr != nil {
+		dbCancel()
+		gc.emitError("error.chat_message_save_failed", nil)
+		return
+	}
+	dbCancel()
+
+	gc.emit(EventChatStart, ChatStartEvent{
+		ChatEvent: gc.chatEvent(assistantMsg.ID),
+		Status:    StatusStreaming,
+	})
+
+	ctx := context.Background()
+	iter, resumeErr := gen.runner.Resume(ctx, gen.checkpointID)
+	if resumeErr != nil {
+		s.app.Logger.Error("[chat] resume failed", "conv", conversationID, "error", resumeErr)
+		gc.emitError("error.chat_generation_failed", map[string]any{"Error": resumeErr.Error()})
+		s.updateMessageStatus(db, assistantMsg.ID, StatusError, resumeErr.Error(), "")
+		return
+	}
+
+	result := s.processResumeStream(ctx, gc, assistantMsg, iter)
+
+	if result.interrupted {
+		gen.interrupted = true
+		return
+	}
+
+	if gen.agentCleanup != nil {
+		gen.agentCleanup()
+		gen.agentCleanup = nil
+	}
+	s.activeGenerations.Delete(conversationID)
 }
 
 // buildExtras creates extra tools and handlers based on agent configuration.
@@ -431,11 +504,26 @@ func (ss *streamState) segmentsStr() string {
 	return "[]"
 }
 
+type processStreamResult struct {
+	interrupted bool
+}
+
 // processStream runs the ADK runner and processes all streaming events.
-func (s *ChatService) processStream(ctx context.Context, gc *generationContext, runner *adk.Runner, assistantMsg *messageModel, messages []*schema.Message) {
+func (s *ChatService) processStream(ctx context.Context, gc *generationContext, runner *adk.Runner, assistantMsg *messageModel, messages []*schema.Message, checkpointID string) processStreamResult {
 	ss := newStreamState(gc, assistantMsg)
 
-	iter := runner.Run(ctx, messages)
+	iter := runner.Run(ctx, messages, adk.WithCheckPointID(checkpointID))
+	return s.consumeEventIter(ctx, gc, ss, assistantMsg, iter)
+}
+
+// processResumeStream processes events from a resumed runner.
+func (s *ChatService) processResumeStream(ctx context.Context, gc *generationContext, assistantMsg *messageModel, iter *adk.AsyncIterator[*adk.AgentEvent]) processStreamResult {
+	ss := newStreamState(gc, assistantMsg)
+	return s.consumeEventIter(ctx, gc, ss, assistantMsg, iter)
+}
+
+// consumeEventIter is the shared event loop for both initial runs and resumed runs.
+func (s *ChatService) consumeEventIter(ctx context.Context, gc *generationContext, ss *streamState, assistantMsg *messageModel, iter *adk.AsyncIterator[*adk.AgentEvent]) processStreamResult {
 	for {
 		event, ok := iter.Next()
 		if !ok {
@@ -448,7 +536,7 @@ func (s *ChatService) processStream(ctx context.Context, gc *generationContext, 
 				ChatEvent: gc.chatEvent(assistantMsg.ID),
 				Status:    StatusCancelled,
 			})
-			return
+			return processStreamResult{}
 		}
 
 		if event.Err != nil {
@@ -460,7 +548,11 @@ func (s *ChatService) processStream(ctx context.Context, gc *generationContext, 
 			s.app.Logger.Error("[chat] generation failed", "conv", gc.conversationID, "tab", gc.tabID, "req", gc.requestID, "error", event.Err)
 			gc.emitError(errorKey, map[string]any{"Error": errMsg})
 			s.updateMessageFinal(gc.db, assistantMsg.ID, ss.contentBuilder.String(), ss.thinkingBuilder.String(), ss.toolCallsStr(), ss.segmentsStr(), StatusError, errMsg, "", ss.inputTokens, ss.outputTokens)
-			return
+			return processStreamResult{}
+		}
+
+		if event.Action != nil && event.Action.Interrupted != nil {
+			return s.handleInterrupt(ctx, gc, ss, assistantMsg, event)
 		}
 
 		if event.Output != nil && event.Output.MessageOutput != nil {
@@ -480,7 +572,7 @@ func (s *ChatService) processStream(ctx context.Context, gc *generationContext, 
 			ChatEvent: gc.chatEvent(assistantMsg.ID),
 			Status:    StatusCancelled,
 		})
-		return
+		return processStreamResult{}
 	}
 
 	s.updateMessageFinal(gc.db, assistantMsg.ID, ss.contentBuilder.String(), ss.thinkingBuilder.String(), ss.toolCallsStr(), ss.segmentsStr(), StatusSuccess, "", ss.finishReason, ss.inputTokens, ss.outputTokens)
@@ -490,6 +582,32 @@ func (s *ChatService) processStream(ctx context.Context, gc *generationContext, 
 		Status:       StatusSuccess,
 		FinishReason: ss.finishReason,
 	})
+	return processStreamResult{}
+}
+
+// handleInterrupt processes an Interrupted event by saving a confirmation
+// message and pausing until the user replies.
+func (s *ChatService) handleInterrupt(_ context.Context, gc *generationContext, ss *streamState, assistantMsg *messageModel, event *adk.AgentEvent) processStreamResult {
+	promptText := "A potentially dangerous operation requires your confirmation. Please reply **confirm** to proceed or **reject** to cancel."
+	if info, ok := event.Action.Interrupted.Data.(*einoagent.InterruptInfo); ok && info.Command != "" {
+		promptText = einoagent.FormatInterruptPrompt(info)
+	}
+
+	s.updateMessageFinal(gc.db, assistantMsg.ID, ss.contentBuilder.String()+promptText, ss.thinkingBuilder.String(), ss.toolCallsStr(), ss.segmentsStr(), StatusInterrupted, "", "interrupted", ss.inputTokens, ss.outputTokens)
+
+	gc.emit(EventChatChunk, ChatChunkEvent{
+		ChatEvent: gc.chatEvent(assistantMsg.ID),
+		Delta:     promptText,
+	})
+	gc.emit(EventChatComplete, ChatCompleteEvent{
+		ChatEvent:    gc.chatEvent(assistantMsg.ID),
+		Status:       StatusInterrupted,
+		FinishReason: "interrupted",
+	})
+
+	s.app.Logger.Info("[chat] generation interrupted, waiting for user confirmation", "conv", gc.conversationID)
+
+	return processStreamResult{interrupted: true}
 }
 
 func (s *ChatService) processStreamingOutput(ctx context.Context, gc *generationContext, ss *streamState, msgOutput *adk.MessageVariant) {

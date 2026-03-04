@@ -13,6 +13,7 @@ import (
 	"chatclaw/internal/errs"
 	"chatclaw/internal/sqlite"
 
+	"github.com/cloudwego/eino/adk"
 	"github.com/google/uuid"
 	"github.com/uptrace/bun"
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -24,6 +25,12 @@ type activeGeneration struct {
 	requestID string
 	tabID     string
 	done      chan struct{}
+
+	// Interrupt/Resume fields (set when an interrupt occurs)
+	runner       *adk.Runner
+	checkpointID string
+	interrupted  bool
+	agentCleanup func() // deferred agent cleanup, held during interrupt
 }
 
 // ChatService handles chat operations
@@ -31,6 +38,7 @@ type ChatService struct {
 	app               *application.App
 	toolRegistry      *tools.ToolRegistry
 	bgProcessManager  *tools.BgProcessManager
+	checkpointStore   adk.CheckPointStore
 	activeGenerations sync.Map // map[int64]*activeGeneration
 }
 
@@ -40,7 +48,32 @@ func NewChatService(app *application.App) *ChatService {
 		app:              app,
 		toolRegistry:     tools.NewToolRegistry(),
 		bgProcessManager: tools.NewBgProcessManager(),
+		checkpointStore:  newInMemoryCheckPointStore(),
 	}
+}
+
+// inMemoryCheckPointStore is a simple in-memory implementation of adk.CheckPointStore.
+type inMemoryCheckPointStore struct {
+	mu sync.RWMutex
+	m  map[string][]byte
+}
+
+func newInMemoryCheckPointStore() *inMemoryCheckPointStore {
+	return &inMemoryCheckPointStore{m: make(map[string][]byte)}
+}
+
+func (s *inMemoryCheckPointStore) Get(_ context.Context, id string) ([]byte, bool, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	v, ok := s.m[id]
+	return v, ok, nil
+}
+
+func (s *inMemoryCheckPointStore) Set(_ context.Context, id string, data []byte) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.m[id] = data
+	return nil
 }
 
 // Shutdown cleans up all resources held by the ChatService, including
@@ -87,7 +120,9 @@ func (s *ChatService) GetMessages(conversationID int64) ([]Message, error) {
 	return messages, nil
 }
 
-// SendMessage sends a message and starts a ReAct generation loop
+// SendMessage sends a message and starts a ReAct generation loop.
+// If the conversation is in an interrupted state (waiting for user confirmation),
+// the message is treated as a resume response instead of starting a new generation.
 func (s *ChatService) SendMessage(input SendMessageInput) (*SendMessageResult, error) {
 	if input.ConversationID <= 0 {
 		return nil, errs.New("error.chat_conversation_id_required")
@@ -101,6 +136,9 @@ func (s *ChatService) SendMessage(input SendMessageInput) (*SendMessageResult, e
 
 	if existing, ok := s.activeGenerations.Load(input.ConversationID); ok {
 		gen := existing.(*activeGeneration)
+		if gen.interrupted {
+			return s.handleResumeMessage(input.ConversationID, gen, content)
+		}
 		if gen.tabID != input.TabID {
 			return nil, errs.New("error.chat_generation_in_progress_other_tab")
 		}
@@ -128,6 +166,66 @@ func (s *ChatService) SendMessage(input SendMessageInput) (*SendMessageResult, e
 	return s.startGeneration(db, input.ConversationID, input.TabID, agentConfig, providerConfig, agentExtras, func(genCtx context.Context, requestID string) {
 		s.runGeneration(genCtx, db, input.ConversationID, input.TabID, requestID, content, agentConfig, providerConfig, agentExtras)
 	})
+}
+
+// handleResumeMessage processes user confirmation/rejection for an interrupted generation.
+func (s *ChatService) handleResumeMessage(conversationID int64, gen *activeGeneration, content string) (*SendMessageResult, error) {
+	db, err := s.db()
+	if err != nil {
+		return nil, err
+	}
+
+	userMsg := &messageModel{
+		ConversationID: conversationID,
+		Role:           RoleUser,
+		Content:        content,
+		Status:         StatusSuccess,
+		ToolCalls:      "[]",
+	}
+	dbCtx, dbCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	_, _ = db.NewInsert().Model(userMsg).Exec(dbCtx)
+	dbCancel()
+
+	approved := isApproval(content)
+	if !approved {
+		if gen.agentCleanup != nil {
+			gen.agentCleanup()
+		}
+		gen.cancel()
+		s.activeGenerations.Delete(conversationID)
+
+		assistantMsg := &messageModel{
+			ConversationID: conversationID,
+			Role:           RoleAssistant,
+			Content:        "Operation cancelled by user.",
+			Status:         StatusSuccess,
+			ToolCalls:      "[]",
+		}
+		dbCtx2, dbCancel2 := context.WithTimeout(context.Background(), 5*time.Second)
+		_, _ = db.NewInsert().Model(assistantMsg).Exec(dbCtx2)
+		dbCancel2()
+
+		return &SendMessageResult{RequestID: gen.requestID, MessageID: userMsg.ID}, nil
+	}
+
+	gen.interrupted = false
+	go func() {
+		s.resumeGeneration(gen, conversationID)
+	}()
+
+	return &SendMessageResult{RequestID: gen.requestID, MessageID: userMsg.ID}, nil
+}
+
+// isApproval checks whether the user message indicates approval.
+func isApproval(content string) bool {
+	lower := strings.ToLower(strings.TrimSpace(content))
+	approvals := []string{"确认", "confirm", "yes", "y", "ok", "approve", "是", "好", "继续", "执行"}
+	for _, a := range approvals {
+		if lower == a {
+			return true
+		}
+	}
+	return false
 }
 
 // EditAndResend edits a message and resends
@@ -253,8 +351,12 @@ func (s *ChatService) startGeneration(db *bun.DB, conversationID int64, tabID st
 	}, nil
 }
 
-// tryDeleteGeneration removes the generation from the map only if it is still the active one.
+// tryDeleteGeneration removes the generation from the map only if it is still
+// the active one and not in an interrupted state (waiting for user confirmation).
 func (s *ChatService) tryDeleteGeneration(conversationID int64, gen *activeGeneration) {
+	if gen.interrupted {
+		return
+	}
 	if cur, ok := s.activeGenerations.Load(conversationID); ok && cur == gen {
 		s.activeGenerations.Delete(conversationID)
 	}
