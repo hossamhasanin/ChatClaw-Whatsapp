@@ -26,7 +26,9 @@ type activeGeneration struct {
 	tabID     string
 	done      chan struct{}
 
-	// Interrupt/Resume fields (set when an interrupt occurs)
+	// mu protects the Interrupt/Resume fields below, which are written by
+	// the generation goroutine and read by SendMessage on the main goroutine.
+	mu           sync.Mutex
 	runner       *adk.Runner
 	checkpointID string
 	interrupted  bool
@@ -136,7 +138,10 @@ func (s *ChatService) SendMessage(input SendMessageInput) (*SendMessageResult, e
 
 	if existing, ok := s.activeGenerations.Load(input.ConversationID); ok {
 		gen := existing.(*activeGeneration)
-		if gen.interrupted {
+		gen.mu.Lock()
+		isInterrupted := gen.interrupted
+		gen.mu.Unlock()
+		if isInterrupted {
 			return s.handleResumeMessage(input.ConversationID, gen, content)
 		}
 		if gen.tabID != input.TabID {
@@ -183,13 +188,22 @@ func (s *ChatService) handleResumeMessage(conversationID int64, gen *activeGener
 		ToolCalls:      "[]",
 	}
 	dbCtx, dbCancel := context.WithTimeout(context.Background(), 5*time.Second)
-	_, _ = db.NewInsert().Model(userMsg).Exec(dbCtx)
+	if _, insertErr := db.NewInsert().Model(userMsg).Exec(dbCtx); insertErr != nil {
+		dbCancel()
+		s.app.Logger.Error("[chat] failed to save resume user message", "conv", conversationID, "error", insertErr)
+		return nil, errs.Wrap("error.chat_message_save_failed", insertErr)
+	}
 	dbCancel()
 
 	approved := isApproval(content)
 	if !approved {
-		if gen.agentCleanup != nil {
-			gen.agentCleanup()
+		gen.mu.Lock()
+		cleanup := gen.agentCleanup
+		gen.agentCleanup = nil
+		gen.mu.Unlock()
+
+		if cleanup != nil {
+			cleanup()
 		}
 		gen.cancel()
 		s.activeGenerations.Delete(conversationID)
@@ -202,13 +216,29 @@ func (s *ChatService) handleResumeMessage(conversationID int64, gen *activeGener
 			ToolCalls:      "[]",
 		}
 		dbCtx2, dbCancel2 := context.WithTimeout(context.Background(), 5*time.Second)
-		_, _ = db.NewInsert().Model(assistantMsg).Exec(dbCtx2)
+		if _, insertErr := db.NewInsert().Model(assistantMsg).Exec(dbCtx2); insertErr != nil {
+			s.app.Logger.Error("[chat] failed to save cancellation message", "conv", conversationID, "error", insertErr)
+		}
 		dbCancel2()
+
+		s.app.Event.Emit(EventChatComplete, ChatCompleteEvent{
+			ChatEvent: ChatEvent{
+				ConversationID: conversationID,
+				TabID:          gen.tabID,
+				RequestID:      gen.requestID,
+				Ts:             time.Now().UnixMilli(),
+			},
+			Status:       StatusSuccess,
+			FinishReason: "cancelled_by_user",
+		})
 
 		return &SendMessageResult{RequestID: gen.requestID, MessageID: userMsg.ID}, nil
 	}
 
+	gen.mu.Lock()
 	gen.interrupted = false
+	gen.mu.Unlock()
+
 	go func() {
 		s.resumeGeneration(gen, conversationID)
 	}()
@@ -354,7 +384,10 @@ func (s *ChatService) startGeneration(db *bun.DB, conversationID int64, tabID st
 // tryDeleteGeneration removes the generation from the map only if it is still
 // the active one and not in an interrupted state (waiting for user confirmation).
 func (s *ChatService) tryDeleteGeneration(conversationID int64, gen *activeGeneration) {
-	if gen.interrupted {
+	gen.mu.Lock()
+	isInterrupted := gen.interrupted
+	gen.mu.Unlock()
+	if isInterrupted {
 		return
 	}
 	if cur, ok := s.activeGenerations.Load(conversationID); ok && cur == gen {

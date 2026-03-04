@@ -4,9 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"strings"
-
-	"chatclaw/internal/eino/tools"
 
 	"github.com/cloudwego/eino/adk"
 	"github.com/cloudwego/eino/components/tool"
@@ -19,27 +18,36 @@ type InterruptInfo struct {
 	Command string `json:"command"`
 }
 
-// dangerousPatterns are command substrings that trigger a confirmation prompt
-// when running in native (non-sandbox) mode.
+// dangerousPatterns are command prefixes/substrings that trigger a confirmation
+// prompt before execution.
 var dangerousPatterns = []string{
 	"rm -rf", "rm -r", "rmdir",
 	"mkfs", "dd if=",
 	"format c:", "format d:",
 	":(){:|:&};:",
-	"sudo", "> /dev/",
+	"> /dev/",
 	"chmod -R 777",
-	"shutdown", "reboot", "halt",
 	"kill -9", "killall",
+}
+
+// dangerousCommands are exact command names (first token) that trigger a
+// confirmation prompt. Checked against the first whitespace-delimited word.
+var dangerousCommands = []string{
+	"sudo",
+	"shutdown",
+	"reboot",
+	"halt",
 }
 
 type interruptHandler struct {
 	adk.BaseChatModelAgentMiddleware
+	logger *slog.Logger
 }
 
 // NewInterruptHandler creates a middleware that interrupts execution of
 // dangerous shell commands, giving the user a chance to confirm or reject.
-func NewInterruptHandler(_ *tools.Backend) adk.ChatModelAgentMiddleware {
-	return &interruptHandler{}
+func NewInterruptHandler(logger *slog.Logger) adk.ChatModelAgentMiddleware {
+	return &interruptHandler{logger: logger}
 }
 
 func (h *interruptHandler) WrapInvokableToolCall(
@@ -47,7 +55,7 @@ func (h *interruptHandler) WrapInvokableToolCall(
 	endpoint adk.InvokableToolCallEndpoint,
 	tCtx *adk.ToolContext,
 ) (adk.InvokableToolCallEndpoint, error) {
-	if tCtx.Name != "execute" {
+	if tCtx.Name != "execute" && tCtx.Name != "execute_background" {
 		return endpoint, nil
 	}
 
@@ -62,6 +70,7 @@ func (h *interruptHandler) WrapInvokableToolCall(
 			return endpoint(ctx, args, opts...)
 		}
 
+		h.logger.Warn("[interrupt] dangerous command intercepted, waiting for user confirmation", "tool", tCtx.Name, "command", cmd)
 		return "", compose.Interrupt(ctx, &InterruptInfo{Command: cmd})
 	}, nil
 }
@@ -80,6 +89,14 @@ func isDangerous(cmd string) bool {
 	for _, p := range dangerousPatterns {
 		if strings.Contains(lower, strings.ToLower(p)) {
 			return true
+		}
+	}
+	firstWord := strings.Fields(lower)
+	if len(firstWord) > 0 {
+		for _, c := range dangerousCommands {
+			if firstWord[0] == c {
+				return true
+			}
 		}
 	}
 	return false

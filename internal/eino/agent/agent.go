@@ -210,8 +210,8 @@ func buildHandlers(ctx context.Context, b *tools.Backend, config Config, chatMod
 		}
 	}
 
-	// Interrupt handler for dangerous commands in native mode.
-	handlers = append(handlers, NewInterruptHandler(b))
+	// Interrupt handler for dangerous shell commands.
+	handlers = append(handlers, NewInterruptHandler(logger))
 
 	// Logging handler goes last so BeforeAgent sees the fully-assembled instruction.
 	handlers = append(handlers, newLoggingHandler(logger, messageCount <= 1))

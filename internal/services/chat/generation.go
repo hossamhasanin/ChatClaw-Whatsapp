@@ -179,10 +179,12 @@ func (s *ChatService) runGenerationCore(ctx context.Context, gc *generationConte
 	if result.interrupted {
 		if existing, ok := s.activeGenerations.Load(conversationID); ok {
 			ag := existing.(*activeGeneration)
+			ag.mu.Lock()
 			ag.runner = runner
 			ag.checkpointID = checkpointID
 			ag.interrupted = true
 			ag.agentCleanup = agentResult.Cleanup
+			ag.mu.Unlock()
 		}
 		return
 	}
@@ -202,6 +204,7 @@ func (s *ChatService) resumeGeneration(gen *activeGeneration, conversationID int
 	db, err := s.db()
 	if err != nil {
 		s.app.Logger.Error("[chat] resume: failed to get db", "conv", conversationID, "error", err)
+		s.cleanupGeneration(gen, conversationID)
 		return
 	}
 
@@ -224,6 +227,7 @@ func (s *ChatService) resumeGeneration(gen *activeGeneration, conversationID int
 	if _, insertErr := db.NewInsert().Model(assistantMsg).Exec(dbCtx); insertErr != nil {
 		dbCancel()
 		gc.emitError("error.chat_message_save_failed", nil)
+		s.cleanupGeneration(gen, conversationID)
 		return
 	}
 	dbCancel()
@@ -233,25 +237,47 @@ func (s *ChatService) resumeGeneration(gen *activeGeneration, conversationID int
 		Status:    StatusStreaming,
 	})
 
-	ctx := context.Background()
+	// Use a cancellable context derived from gen.cancel so that
+	// StopGeneration can abort the resumed run.
+	ctx, cancel := context.WithCancel(context.Background())
+	oldCancel := gen.cancel
+	gen.cancel = func() {
+		cancel()
+		if oldCancel != nil {
+			oldCancel()
+		}
+	}
+
 	iter, resumeErr := gen.runner.Resume(ctx, gen.checkpointID)
 	if resumeErr != nil {
 		s.app.Logger.Error("[chat] resume failed", "conv", conversationID, "error", resumeErr)
 		gc.emitError("error.chat_generation_failed", map[string]any{"Error": resumeErr.Error()})
 		s.updateMessageStatus(db, assistantMsg.ID, StatusError, resumeErr.Error(), "")
+		s.cleanupGeneration(gen, conversationID)
 		return
 	}
 
 	result := s.processResumeStream(ctx, gc, assistantMsg, iter)
 
 	if result.interrupted {
+		gen.mu.Lock()
 		gen.interrupted = true
+		gen.mu.Unlock()
 		return
 	}
 
-	if gen.agentCleanup != nil {
-		gen.agentCleanup()
-		gen.agentCleanup = nil
+	s.cleanupGeneration(gen, conversationID)
+}
+
+// cleanupGeneration releases agent resources and removes the generation from the map.
+func (s *ChatService) cleanupGeneration(gen *activeGeneration, conversationID int64) {
+	gen.mu.Lock()
+	cleanup := gen.agentCleanup
+	gen.agentCleanup = nil
+	gen.mu.Unlock()
+
+	if cleanup != nil {
+		cleanup()
 	}
 	s.activeGenerations.Delete(conversationID)
 }
@@ -593,7 +619,12 @@ func (s *ChatService) handleInterrupt(_ context.Context, gc *generationContext, 
 		promptText = einoagent.FormatInterruptPrompt(info)
 	}
 
-	s.updateMessageFinal(gc.db, assistantMsg.ID, ss.contentBuilder.String()+promptText, ss.thinkingBuilder.String(), ss.toolCallsStr(), ss.segmentsStr(), StatusInterrupted, "", "interrupted", ss.inputTokens, ss.outputTokens)
+	existingContent := ss.contentBuilder.String()
+	separator := ""
+	if existingContent != "" {
+		separator = "\n\n"
+	}
+	s.updateMessageFinal(gc.db, assistantMsg.ID, existingContent+separator+promptText, ss.thinkingBuilder.String(), ss.toolCallsStr(), ss.segmentsStr(), StatusInterrupted, "", "interrupted", ss.inputTokens, ss.outputTokens)
 
 	gc.emit(EventChatChunk, ChatChunkEvent{
 		ChatEvent: gc.chatEvent(assistantMsg.ID),
