@@ -21,7 +21,7 @@ type readFileInput struct {
 // NewReadFileTool creates a read_file tool backed by Backend.
 func NewReadFileTool(b *Backend) (tool.BaseTool, error) {
 	return utils.InferTool(ToolIDReadFile,
-		"Read file content with optional line offset and limit. Use absolute paths.",
+		"Read file content with optional line offset and limit. Use absolute paths. Prefer this over shell cat/head/tail for reading files.",
 		func(ctx context.Context, input *readFileInput) (string, error) {
 			filePath, err := b.ResolvePath(input.FilePath)
 			if err != nil {
@@ -48,7 +48,7 @@ type lsInput struct {
 // NewLsTool creates an ls tool with rich output (type, size, time).
 func NewLsTool(b *Backend) (tool.BaseTool, error) {
 	return utils.InferTool(ToolIDLs,
-		"List files and directories at the given path. Returns type, path, size, and modification time.",
+		"List files and directories at the given path. Returns type, path, size, and modification time. Use absolute paths (e.g. working directory when user mentions it).",
 		func(ctx context.Context, input *lsInput) (string, error) {
 			targetPath, err := b.ResolvePath(input.Path)
 			if err != nil {

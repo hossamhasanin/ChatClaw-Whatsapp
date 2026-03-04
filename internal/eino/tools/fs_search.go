@@ -19,7 +19,7 @@ type globInput struct {
 // NewGlobTool creates a glob tool backed by Backend.
 func NewGlobTool(b *Backend) (tool.BaseTool, error) {
 	return utils.InferTool(ToolIDGlob,
-		"Find files matching a glob pattern. Returns absolute file paths, one per line.",
+		"Find files matching a glob pattern (e.g. '**/*.py', '*.go'). Returns absolute file paths. Use instead of shell find command.",
 		func(ctx context.Context, input *globInput) (string, error) {
 			basePath, err := b.ResolvePath(input.Path)
 			if err != nil {
@@ -62,7 +62,7 @@ type grepInput struct {
 // output formatting, and pagination locally for richer output than the base interface.
 func NewGrepTool(b *Backend) (tool.BaseTool, error) {
 	return utils.InferTool(ToolIDGrep,
-		`Search for a pattern in files.
+		`Search for a pattern in files. Use instead of shell grep command. Supports regex, context lines, case-insensitive, output modes.
 
 Usage:
 - The pattern parameter is the text to search for. Treated as regex; falls back to literal match on invalid regex.

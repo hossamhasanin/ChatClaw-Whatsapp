@@ -19,7 +19,7 @@ type writeFileInput struct {
 // NewWriteFileTool creates a write_file tool backed by Backend.
 func NewWriteFileTool(b *Backend) (tool.BaseTool, error) {
 	return utils.InferTool(ToolIDWriteFile,
-		"Create or overwrite a file with the given content. Use absolute paths. Prefer this over shell echo for creating files.",
+		"Create or overwrite a file with the given content. Use absolute paths. Prefer this over shell echo for creating files. Default to working directory when user asks to create files.",
 		func(ctx context.Context, input *writeFileInput) (string, error) {
 			filePath, err := b.ResolveWritePath(input.FilePath)
 			if err != nil {

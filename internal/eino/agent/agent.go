@@ -39,7 +39,6 @@ const (
 	reductionDir   = "reduction"        // reduction middleware offload directory
 	tasksDir       = "tasks"            // plantask middleware data directory
 	transcriptFile = "transcript.jsonl" // summarization transcript filename
-	skillsRelDir   = ".chatclaw/skills"  // skills directory relative to $HOME
 	codexBinName   = "codex"            // codex sandbox binary name (without .exe)
 	sandboxCodex   = "codex"            // SandboxMode value for codex sandbox
 )
@@ -199,7 +198,7 @@ func buildHandlers(ctx context.Context, b *tools.Backend, config Config, chatMod
 	}
 
 	if config.SkillsEnabled {
-		if h := buildSkillHandler(ctx, logger); h != nil {
+		if h := buildSkillHandler(ctx, b, logger); h != nil {
 			handlers = append(handlers, h)
 		}
 	}

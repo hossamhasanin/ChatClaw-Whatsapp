@@ -36,7 +36,7 @@ const (
 // NewExecuteTool creates an execute tool backed by Backend.
 func NewExecuteTool(b *Backend, bgMgr *BgProcessManager) (tool.BaseTool, error) {
 	return utils.InferTool(ToolIDExecute,
-		"Execute a shell command synchronously (action='run', default), stop a background process (action='stop'), or check background process status (action='status'). Working directory is the configured workspace. Default timeout: 30s, max 300s. For long-running servers, use execute_background to start them, then use this tool with action='stop' or action='status' to manage them.",
+		`Execute shell commands. action='run' (default): run command synchronously in working directory, returns stdout/stderr and exit code. Default timeout 30s, max 300s. For short-lived commands only (build, test, install, lint); do NOT use for dev servers — use execute_background. Avoid cat/head/tail (use read_file), find (use glob), grep command (use grep tool). action='stop': kill background process by pid, wait for exit. action='status': check if background process is alive and read its output.`,
 		func(ctx context.Context, input *executeInput) (string, error) {
 			action := input.Action
 			if action == "" {
