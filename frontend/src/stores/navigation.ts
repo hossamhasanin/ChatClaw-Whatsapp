@@ -53,6 +53,8 @@ export interface PendingChatData {
   agentId?: number
   /** Whether thinking mode is enabled */
   enableThinking?: boolean
+  /** Chat mode: 'chat' or 'task' */
+  chatMode?: string
   /** Target tab ID that should consume this data */
   targetTabId: string
 }

@@ -508,10 +508,10 @@ const handleOpenExternally = async () => {
             v-else-if="fileBuffer"
             :src="fileBuffer"
             style="height: 100%;"
-            @rendered="renderError.value = ''"
+            @rendered="renderError = ''"
             @error="(err: any) => {
               console.error('DOCX render error:', err)
-              renderError.value = t('knowledge.viewer.corruptedOrWrongType', { type: 'DOCX' })
+              renderError = t('knowledge.viewer.corruptedOrWrongType', { type: 'DOCX' })
             }"
           />
           <div v-else class="flex flex-col items-center justify-center py-12 gap-4">
@@ -540,10 +540,10 @@ const handleOpenExternally = async () => {
             v-else-if="fileBuffer"
             :src="fileBuffer"
             style="height: 100%;"
-            @rendered="renderError.value = ''"
+            @rendered="renderError = ''"
             @error="(err: any) => {
               console.error('XLSX render error:', err)
-              renderError.value = t('knowledge.viewer.corruptedOrWrongType', { type: 'XLSX' })
+              renderError = t('knowledge.viewer.corruptedOrWrongType', { type: 'XLSX' })
             }"
           />
           <div v-else class="flex flex-col items-center justify-center py-12 gap-4">
@@ -588,7 +588,7 @@ const handleOpenExternally = async () => {
             class="w-full h-full border-0"
             :title="document?.name"
             @error="() => {
-              renderError.value = t('knowledge.viewer.corruptedOrWrongType', { type: 'PDF' })
+              renderError = t('knowledge.viewer.corruptedOrWrongType', { type: 'PDF' })
             }"
           />
         </div>

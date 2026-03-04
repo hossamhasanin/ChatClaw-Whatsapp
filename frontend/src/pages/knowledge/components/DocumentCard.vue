@@ -54,6 +54,7 @@ export interface Document {
 
 const props = defineProps<{
   document: Document
+  isSearching?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -375,14 +376,14 @@ const handleCardClick = () => {
           {{ t('knowledge.content.moveToFolder.title') }}
         </DropdownMenuItem>
         <DropdownMenuItem
-          v-if="document.folderId !== null && document.folderId !== undefined"
+          v-if="isSearching && document.folderId !== null && document.folderId !== undefined"
           class="gap-2 whitespace-nowrap"
           @select="emit('navigate-to-folder', document)"
         >
           <FolderPlus class="size-4 text-muted-foreground" />
           {{ t('knowledge.content.navigateToFolder') }}
         </DropdownMenuItem>
-        <DropdownMenuSeparator v-if="document.folderId !== null && document.folderId !== undefined" />
+        <DropdownMenuSeparator v-if="isSearching && document.folderId !== null && document.folderId !== undefined" />
         <DropdownMenuItem
           class="gap-2 whitespace-nowrap text-muted-foreground focus:text-foreground"
           @select="emit('delete', document)"

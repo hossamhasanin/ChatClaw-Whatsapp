@@ -508,13 +508,6 @@ func (s *LibraryService) MoveFolder(input MoveFolderInput) (*Folder, error) {
 	}
 
 	// 更新文件夹的 parent_id
-	var parentIDValue interface{}
-	if input.ParentID != nil && *input.ParentID > 0 {
-		parentIDValue = *input.ParentID
-	} else {
-		parentIDValue = nil
-	}
-
 	folder.ParentID = input.ParentID
 	if _, err := db.NewUpdate().Model(&folder).
 		Column("parent_id", "updated_at").

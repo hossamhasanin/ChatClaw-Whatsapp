@@ -305,6 +305,11 @@ const findFolderById = (id: number): Folder | null => {
   return folderMapCache.value.get(id) || null
 }
 
+// 计算是否正在搜索
+const isSearching = computed(() => {
+  return searchQuery.value.trim().length > 0
+})
+
 // 计算要显示的文件夹列表
 const displayFolders = computed(() => {
   // 如果 activeFolderId 为 null，显示根文件夹
@@ -361,13 +366,13 @@ const visibleBreadcrumbs = computed(() => {
   const path = breadcrumbPath.value
   if (path.length <= 4) {
     // 路径不长，全部显示
-    return path.map((item, idx) => ({ ...item, visible: true, index: idx }))
+    return path.map((item, idx) => ({ ...item, visible: true, index: idx, isEllipsis: false }))
   }
   // 路径过长，只显示首尾
-  const result: Array<{ name: string; id: number | null; visible: boolean; index: number; isEllipsis?: boolean }> = []
-  result.push({ ...path[0], visible: true, index: 0 })
+  const result: Array<{ name: string; id: number | null; visible: boolean; index: number; isEllipsis: boolean }> = []
+  result.push({ ...path[0], visible: true, index: 0, isEllipsis: false })
   result.push({ name: '...', id: null, visible: true, index: -1, isEllipsis: true })
-  result.push({ ...path[path.length - 1], visible: true, index: path.length - 1 })
+  result.push({ ...path[path.length - 1], visible: true, index: path.length - 1, isEllipsis: false })
   return result
 })
 
@@ -1148,6 +1153,7 @@ onUnmounted(() => {
             v-for="doc in filteredDocuments"
             :key="doc.id"
             :document="doc"
+            :is-searching="isSearching"
             @rename="handleRename"
             @relearn="handleRelearn"
             @delete="handleOpenDelete"
