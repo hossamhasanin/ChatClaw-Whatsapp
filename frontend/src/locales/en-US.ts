@@ -539,6 +539,7 @@ export default {
       nativeTooltip: 'Native Environment',
       outputFiles: 'Output Files',
       openFolder: 'Open in file manager',
+      depthLimitHint: 'Showing only the first {depth} directory levels',
       noFiles: 'No output files yet',
     },
   },

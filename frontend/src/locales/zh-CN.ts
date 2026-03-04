@@ -536,6 +536,7 @@ export default {
       nativeTooltip: '本机环境',
       outputFiles: '输出文件',
       openFolder: '在文件管理器中打开',
+      depthLimitHint: '当前仅展示前 {depth} 层目录',
       noFiles: '暂无产出文件',
     },
   },

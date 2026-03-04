@@ -27,6 +27,7 @@ const emit = defineEmits<{
 }>()
 
 const { t } = useI18n()
+const MAX_TREE_DEPTH = 3
 
 const workspaceDir = ref('')
 const fileTree = ref<FileEntry[]>([])
@@ -228,6 +229,10 @@ onUnmounted(() => {
           :title="workspaceDir"
         >
           {{ workspaceDir }}
+        </div>
+
+        <div class="mb-2 text-[11px] text-muted-foreground/80">
+          {{ t('assistant.workspaceDrawer.depthLimitHint', { depth: MAX_TREE_DEPTH }) }}
         </div>
 
         <!-- File tree -->

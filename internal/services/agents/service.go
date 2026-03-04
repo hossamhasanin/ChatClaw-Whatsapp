@@ -137,12 +137,12 @@ func (s *AgentsService) CreateAgent(input CreateAgentInput) (*Agent, error) {
 		Icon:   icon,
 
 		// 允许为空：用户可在「模型设置」里选择
-		DefaultLLMProviderID: "",
-		DefaultLLMModelID:    "",
-		LLMTemperature:       0.5,
-		LLMTopP:              1.0,
-		LLMMaxContextCount:   50,
-		LLMMaxTokens:         1000,
+		DefaultLLMProviderID:    "",
+		DefaultLLMModelID:       "",
+		LLMTemperature:          0.5,
+		LLMTopP:                 1.0,
+		LLMMaxContextCount:      50,
+		LLMMaxTokens:            1000,
 		EnableLLMTemperature:    false,
 		EnableLLMTopP:           false,
 		EnableLLMMaxTokens:      false,
@@ -389,6 +389,8 @@ type FileEntry struct {
 	Children []FileEntry `json:"children,omitempty"`
 }
 
+const workspaceTreeMaxDepth = 3
+
 // idHash produces the same 12-hex-char directory name used by the agent runtime
 // (see internal/eino/agent/agent.go idHash).
 func idHash(id int64) string {
@@ -421,11 +423,18 @@ func (s *AgentsService) ListWorkspaceFiles(agentID int64, conversationID int64) 
 	}
 
 	info, statErr := os.Stat(dir)
-	if statErr != nil || !info.IsDir() {
-		return []FileEntry{}, nil
+	if statErr != nil {
+		// A missing workspace directory is expected before any file output is generated.
+		if errors.Is(statErr, os.ErrNotExist) {
+			return []FileEntry{}, nil
+		}
+		return nil, errs.Wrap("error.agent_list_files_failed", statErr)
+	}
+	if !info.IsDir() {
+		return nil, errs.New("error.agent_workspace_dir_invalid")
 	}
 
-	entries, err := readDirTree(dir, 3)
+	entries, err := readDirTree(dir, workspaceTreeMaxDepth)
 	if err != nil {
 		return nil, errs.Wrap("error.agent_list_files_failed", err)
 	}
@@ -435,7 +444,7 @@ func (s *AgentsService) ListWorkspaceFiles(agentID int64, conversationID int64) 
 // readDirTree recursively reads a directory tree up to maxDepth levels.
 func readDirTree(dir string, maxDepth int) ([]FileEntry, error) {
 	if maxDepth <= 0 {
-		return nil, nil
+		return []FileEntry{}, nil
 	}
 	dirEntries, err := os.ReadDir(dir)
 	if err != nil {
