@@ -190,7 +190,7 @@ func (b *Backend) Edit(_ context.Context, req *filesystem.EditRequest) error {
 	return os.WriteFile(path, []byte(newContent), 0o644)
 }
 
-func (b *Backend) GrepRaw(_ context.Context, req *filesystem.GrepRequest) ([]filesystem.GrepMatch, error) {
+func (b *Backend) GrepRaw(ctx context.Context, req *filesystem.GrepRequest) ([]filesystem.GrepMatch, error) {
 	basePath := req.Path
 	if basePath == "" {
 		basePath = b.homeDir
@@ -212,6 +212,9 @@ func (b *Backend) GrepRaw(_ context.Context, req *filesystem.GrepRequest) ([]fil
 	var matches []filesystem.GrepMatch
 
 	err := filepath.WalkDir(basePath, func(p string, d os.DirEntry, err error) error {
+		if ctx.Err() != nil {
+			return filepath.SkipAll
+		}
 		if err != nil {
 			if os.IsPermission(err) {
 				return filepath.SkipDir
@@ -268,7 +271,7 @@ func (b *Backend) GrepRaw(_ context.Context, req *filesystem.GrepRequest) ([]fil
 	return matches, nil
 }
 
-func (b *Backend) GlobInfo(_ context.Context, req *filesystem.GlobInfoRequest) ([]filesystem.FileInfo, error) {
+func (b *Backend) GlobInfo(ctx context.Context, req *filesystem.GlobInfoRequest) ([]filesystem.FileInfo, error) {
 	basePath := req.Path
 	if basePath == "" {
 		basePath = b.homeDir
@@ -294,6 +297,9 @@ func (b *Backend) GlobInfo(_ context.Context, req *filesystem.GlobInfoRequest) (
 		}
 
 		err = filepath.Walk(basePath, func(p string, info os.FileInfo, walkErr error) error {
+			if ctx.Err() != nil {
+				return filepath.SkipAll
+			}
 			if walkErr != nil {
 				return nil
 			}
@@ -334,13 +340,13 @@ func (b *Backend) GlobInfo(_ context.Context, req *filesystem.GlobInfoRequest) (
 // filesystem.Shell — Command execution
 // ---------------------------------------------------------------------------
 
-func (b *Backend) Execute(_ context.Context, input *filesystem.ExecuteRequest) (*filesystem.ExecuteResponse, error) {
+func (b *Backend) Execute(parentCtx context.Context, input *filesystem.ExecuteRequest) (*filesystem.ExecuteResponse, error) {
 	if input.Command == "" {
 		return nil, fmt.Errorf("command is required")
 	}
 
 	timeout := 60 * time.Second
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	ctx, cancel := context.WithTimeout(parentCtx, timeout)
 	defer cancel()
 
 	var cmd *exec.Cmd

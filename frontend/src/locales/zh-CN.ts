@@ -72,7 +72,7 @@ export default {
     taskList: { name: '任务列表' },
     skill: { name: '加载技能' },
     writeTodos: { name: '任务规划' },
-    task: { name: '子任务' },
+    task: { name: '子任务（可能需要较长时间）' },
   },
   winsnap: {
     title: 'ChatClaw',
