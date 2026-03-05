@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Plus, MoreHorizontal, Settings } from 'lucide-vue-next'
+import { Plus, MoreHorizontal, Settings, FileText, Folder as FolderIcon } from 'lucide-vue-next'
 import IconKnowledge from '@/assets/icons/knowledge.svg'
 
 /**
@@ -12,9 +12,11 @@ defineProps<{
   tabId: string
 }>()
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 import { toast } from '@/components/ui/toast'
 import { getErrorMessage } from '@/composables/useErrorMessage'
+import { useNavigationStore, useSettingsStore } from '@/stores'
 import CreateLibraryDialog from './components/CreateLibraryDialog.vue'
 import EmbeddingSettingsDialog from './components/EmbeddingSettingsDialog.vue'
 import RenameLibraryDialog from './components/RenameLibraryDialog.vue'
@@ -25,6 +27,14 @@ import FolderTreeItem from './components/FolderTreeItem.vue'
 import IconRename from '@/assets/icons/library-rename.svg'
 import IconLibSettings from '@/assets/icons/library-settings.svg'
 import IconDelete from '@/assets/icons/library-delete.svg'
+import IconPdf from '@/assets/icons/file-pdf.svg'
+import IconWord from '@/assets/icons/file-word.svg'
+import IconExcel from '@/assets/icons/file-excel.svg'
+import IconText from '@/assets/icons/file-text.svg'
+import IconMarkdown from '@/assets/icons/file-markdown.svg'
+import IconHtml from '@/assets/icons/file-html.svg'
+import IconCsv from '@/assets/icons/file-csv.svg'
+import IconOfd from '@/assets/icons/file-ofd.svg'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -45,12 +55,20 @@ import {
 
 import type { Library } from '@bindings/chatclaw/internal/services/library'
 import { LibraryService, type Folder } from '@bindings/chatclaw/internal/services/library'
+import {
+  ChatWikiService,
+  type LibraryFile as ChatWikiLibraryFile,
+  type LibraryGroup as ChatWikiLibraryGroup,
+  type LibraryParagraph as ChatWikiLibraryParagraph,
+} from '@bindings/chatclaw/internal/services/chatwiki'
 import { SettingsService } from '@bindings/chatclaw/internal/services/settings'
-import { ChevronRight, ChevronDown } from 'lucide-vue-next'
+import { ChevronRight } from 'lucide-vue-next'
 
 type LibraryTab = 'personal' | 'team'
 
 const { t } = useI18n()
+const navigationStore = useNavigationStore()
+const settingsStore = useSettingsStore()
 
 const activeTab = ref<LibraryTab>('personal')
 const createDialogOpen = ref(false)
@@ -72,11 +90,181 @@ const selectedFolderId = ref<number | null>(null)
 const selectedLibrary = computed(
   () => libraries.value.find((l) => l.id === selectedLibraryId.value) || null
 )
+interface TeamLibraryItem {
+  id: string
+  name: string
+  intro: string
+  type: string
+  type_name: string
+  chat_claw_switch_status: number
+}
+const teamBindingChecked = ref(false)
+const teamBound = ref(false)
+const teamLibraries = ref<TeamLibraryItem[]>([])
+const teamLibrariesLoading = ref(false)
+const teamLibraryTab = ref(0)
+const selectedTeamLibraryId = ref<string | null>(null)
+const selectedTeamLibrary = computed(
+  () => teamLibraries.value.find((l) => l.id === selectedTeamLibraryId.value) || null
+)
+const TEAM_ALL_GROUP_ID = '-1'
+const TEAM_PAGE_SIZE = 10
+const TEAM_LOAD_MORE_THRESHOLD = 360
+const TEAM_SKELETON_COUNT = 6
+const teamLibraryGroups = ref<ChatWikiLibraryGroup[]>([])
+const teamLibraryFiles = ref<ChatWikiLibraryFile[]>([])
+const teamUngroupedFiles = ref<ChatWikiLibraryFile[]>([])
+const teamLibraryGroupsLoading = ref(false)
+const teamLibraryFilesLoading = ref(false)
+const teamLibraryFilesLoadingMore = ref(false)
+const teamUngroupedFilesLoading = ref(false)
+const teamUngroupedFilesLoadingMore = ref(false)
+const teamLibraryFilesPage = ref(1)
+const teamUngroupedFilesPage = ref(1)
+const teamLibraryFilesHasMore = ref(true)
+const teamUngroupedFilesHasMore = ref(true)
+const teamNormalSearchInput = ref('')
+const teamNormalSearchKeyword = ref('')
+const teamQAParagraphs = ref<ChatWikiLibraryParagraph[]>([])
+const teamQAParagraphsLoading = ref(false)
+const teamQAParagraphsLoadingMore = ref(false)
+const teamQAParagraphsPage = ref(1)
+const teamQAParagraphsHasMore = ref(true)
+const teamQAParagraphTotal = ref(-1)
+const teamQASearchInput = ref('')
+const teamQASearchKeyword = ref('')
+const selectedTeamGroupId = ref<string>(TEAM_ALL_GROUP_ID)
+const teamNormalPage = ref<'groups' | 'files'>('groups')
+const teamScrollContainerRef = ref<HTMLElement | null>(null)
+let teamNormalRequestID = 0
+let teamScrollRafID: number | null = null
+const teamGroupCards = computed(() => teamLibraryGroups.value)
+const selectedTeamGroupName = computed(
+  () => teamLibraryGroups.value.find((group) => group.id === selectedTeamGroupId.value)?.name || ''
+)
+
+
+const getTeamFileExtension = (file: ChatWikiLibraryFile) => {
+  const ext = String(file.extension || '').trim().toLowerCase()
+  if (ext) return ext
+  const name = String(file.name || '')
+  const idx = name.lastIndexOf('.')
+  if (idx < 0 || idx === name.length - 1) return ''
+  return name.slice(idx + 1).trim().toLowerCase()
+}
+
+const getTeamFileIcon = (file: ChatWikiLibraryFile) => {
+  const ext = getTeamFileExtension(file)
+  switch (ext) {
+    case 'pdf':
+      return IconPdf
+    case 'doc':
+    case 'docx':
+      return IconWord
+    case 'xls':
+    case 'xlsx':
+      return IconExcel
+    case 'txt':
+      return IconText
+    case 'md':
+    case 'markdown':
+      return IconMarkdown
+    case 'html':
+    case 'htm':
+      return IconHtml
+    case 'csv':
+      return IconCsv
+    case 'ofd':
+      return IconOfd
+    default:
+      return FileText
+  }
+}
+
+const formatTeamFileDate = (dateStr: string) => {
+  const date = new Date(dateStr)
+  if (Number.isNaN(date.getTime())) return ''
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}/${month}/${day}`
+}
+
+const getTeamFileStatusLabel = (status: number) => {
+  if (status === 3) return t('knowledge.content.status.failed')
+  if (status === 2) return ''
+  if (status === 1) return t('knowledge.content.status.learning')
+  return t('knowledge.content.status.pending')
+}
+
+const getTeamFileThumbUrl = (file: ChatWikiLibraryFile) => {
+  const thumbPath = String(file.thumb_path || '').trim()
+  return thumbPath
+}
+
+const teamThumbLoadFailedKeys = ref<Set<string>>(new Set())
+
+const getTeamFileThumbKey = (file: ChatWikiLibraryFile) => {
+  const thumbPath = getTeamFileThumbUrl(file)
+  return `${file.id}::${thumbPath}`
+}
+
+const canShowTeamFileThumb = (file: ChatWikiLibraryFile) => {
+  const thumbPath = getTeamFileThumbUrl(file)
+  if (!thumbPath) return false
+  return !teamThumbLoadFailedKeys.value.has(getTeamFileThumbKey(file))
+}
+
+const handleTeamFileThumbError = (file: ChatWikiLibraryFile) => {
+  const key = getTeamFileThumbKey(file)
+  if (teamThumbLoadFailedKeys.value.has(key)) return
+  const next = new Set(teamThumbLoadFailedKeys.value)
+  next.add(key)
+  teamThumbLoadFailedKeys.value = next
+}
+
+const clearTeamNormalContent = () => {
+  teamLibraryGroups.value = []
+  teamLibraryFiles.value = []
+  teamUngroupedFiles.value = []
+  teamLibraryFilesPage.value = 1
+  teamUngroupedFilesPage.value = 1
+  teamLibraryFilesHasMore.value = true
+  teamUngroupedFilesHasMore.value = true
+  teamLibraryFilesLoadingMore.value = false
+  teamUngroupedFilesLoadingMore.value = false
+  selectedTeamGroupId.value = TEAM_ALL_GROUP_ID
+  teamNormalPage.value = teamLibraryTab.value === 0 ? 'groups' : 'files'
+}
+
+const applyTeamNormalSearch = () => {
+  const keyword = teamNormalSearchInput.value.trim()
+  if (keyword === teamNormalSearchKeyword.value) return
+  teamNormalSearchKeyword.value = keyword
+  if (!selectedTeamLibraryId.value) return
+  const requestID = ++teamNormalRequestID
+  if (teamLibraryTab.value === 0 && teamNormalPage.value === 'groups') {
+    void loadTeamUngroupedFiles(selectedTeamLibraryId.value, requestID)
+    return
+  }
+  const groupID = teamLibraryTab.value === 0 ? selectedTeamGroupId.value : ''
+  void loadTeamLibraryFiles(selectedTeamLibraryId.value, requestID, false, groupID)
+}
+
+const clearTeamQAContent = () => {
+  teamQAParagraphs.value = []
+  teamQAParagraphsPage.value = 1
+  teamQAParagraphsHasMore.value = true
+  teamQAParagraphsLoading.value = false
+  teamQAParagraphsLoadingMore.value = false
+  teamQAParagraphTotal.value = -1
+}
 
 // Whether the library list is empty (loaded & no personal libraries)
 const isLibraryEmpty = computed(
   () => !loading.value && activeTab.value === 'personal' && libraries.value.length === 0
 )
+const isPersonalTab = computed(() => activeTab.value === 'personal')
 
 const loadLibraries = async () => {
   loading.value = true
@@ -236,6 +424,333 @@ const handleEmbeddingSettingsClick = () => {
   embeddingSettingsOpen.value = true
 }
 
+const goToChatwikiBindingSettings = () => {
+  settingsStore.setActiveMenu('chatwiki')
+  navigationStore.navigateToModule('settings')
+}
+
+const loadTeamLibraries = async () => {
+  teamLibrariesLoading.value = true
+  try {
+    const list = await ChatWikiService.GetLibraryListOnlyOpen(teamLibraryTab.value)
+    teamLibraries.value = (list || []).map((item: any) => ({
+      id: String(item?.id ?? ''),
+      name: String(item?.name ?? ''),
+      intro: String(item?.intro ?? ''),
+      type: String(item?.type ?? ''),
+      type_name: String(item?.type_name ?? ''),
+      chat_claw_switch_status: Number(item?.chat_claw_switch_status ?? 0),
+    }))
+    if (!selectedTeamLibraryId.value && teamLibraries.value.length > 0) {
+      selectedTeamLibraryId.value = teamLibraries.value[0].id
+    }
+    if (
+      selectedTeamLibraryId.value &&
+      !teamLibraries.value.some((item) => item.id === selectedTeamLibraryId.value)
+    ) {
+      selectedTeamLibraryId.value = teamLibraries.value[0]?.id ?? null
+    }
+  } catch (error) {
+    console.error('Failed to load team libraries:', error)
+    teamLibraries.value = []
+    selectedTeamLibraryId.value = null
+    toast.error(getErrorMessage(error) || t('knowledge.loadFailed'))
+  } finally {
+    teamLibrariesLoading.value = false
+  }
+}
+
+const loadTeamLibraryGroups = async (libraryID: string, requestID: number) => {
+  teamLibraryGroupsLoading.value = true
+  try {
+    const groups = await ChatWikiService.GetLibraryGroup(libraryID, 1)
+    if (requestID !== teamNormalRequestID) return
+    teamLibraryGroups.value = groups || []
+    selectedTeamGroupId.value = TEAM_ALL_GROUP_ID
+    teamNormalPage.value = 'groups'
+  } catch (error) {
+    if (requestID !== teamNormalRequestID) return
+    teamLibraryGroups.value = []
+    selectedTeamGroupId.value = TEAM_ALL_GROUP_ID
+    teamNormalPage.value = 'groups'
+    console.error('Failed to load team library groups:', error)
+    toast.error(getErrorMessage(error) || t('knowledge.loadFailed'))
+  } finally {
+    if (requestID === teamNormalRequestID) {
+      teamLibraryGroupsLoading.value = false
+    }
+  }
+}
+
+const loadTeamLibraryFiles = async (
+  libraryID: string,
+  requestID: number,
+  append = false,
+  groupID = ''
+) => {
+  if (append) {
+    if (!teamLibraryFilesHasMore.value || teamLibraryFilesLoading.value || teamLibraryFilesLoadingMore.value) {
+      return
+    }
+    teamLibraryFilesLoadingMore.value = true
+  } else {
+    teamLibraryFilesPage.value = 1
+    teamLibraryFilesHasMore.value = true
+    teamLibraryFilesLoading.value = true
+  }
+  try {
+    const page = append ? teamLibraryFilesPage.value + 1 : 1
+    const files = await ChatWikiService.GetLibFileList(
+      libraryID,
+      '',
+      page,
+      TEAM_PAGE_SIZE,
+      '',
+      '',
+      groupID,
+      teamNormalSearchKeyword.value
+    )
+    if (requestID !== teamNormalRequestID) return
+    const list = files || []
+    teamLibraryFiles.value = append ? [...teamLibraryFiles.value, ...list] : list
+    teamLibraryFilesPage.value = page
+    teamLibraryFilesHasMore.value = list.length >= TEAM_PAGE_SIZE
+  } catch (error) {
+    if (requestID !== teamNormalRequestID) return
+    if (!append) {
+      teamLibraryFiles.value = []
+    }
+    teamLibraryFilesHasMore.value = false
+    console.error('Failed to load team library files:', error)
+    toast.error(getErrorMessage(error) || t('knowledge.loadFailed'))
+  } finally {
+    if (requestID === teamNormalRequestID) {
+      teamLibraryFilesLoading.value = false
+      teamLibraryFilesLoadingMore.value = false
+      void nextTick(() => {
+        checkAndLoadMoreTeamFiles()
+      })
+    }
+  }
+}
+
+const loadTeamUngroupedFiles = async (libraryID: string, requestID: number, append = false) => {
+  if (append) {
+    if (
+      !teamUngroupedFilesHasMore.value ||
+      teamUngroupedFilesLoading.value ||
+      teamUngroupedFilesLoadingMore.value
+    ) {
+      return
+    }
+    teamUngroupedFilesLoadingMore.value = true
+  } else {
+    teamUngroupedFilesPage.value = 1
+    teamUngroupedFilesHasMore.value = true
+    teamUngroupedFilesLoading.value = true
+  }
+  try {
+    const page = append ? teamUngroupedFilesPage.value + 1 : 1
+    const files = await ChatWikiService.GetLibFileList(
+      libraryID,
+      '',
+      page,
+      TEAM_PAGE_SIZE,
+      '',
+      '',
+      '0',
+      teamNormalSearchKeyword.value
+    )
+    if (requestID !== teamNormalRequestID) return
+    const list = files || []
+    teamUngroupedFiles.value = append ? [...teamUngroupedFiles.value, ...list] : list
+    teamUngroupedFilesPage.value = page
+    teamUngroupedFilesHasMore.value = list.length >= TEAM_PAGE_SIZE
+  } catch (error) {
+    if (requestID !== teamNormalRequestID) return
+    if (!append) {
+      teamUngroupedFiles.value = []
+    }
+    teamUngroupedFilesHasMore.value = false
+    console.error('Failed to load team ungrouped files:', error)
+    toast.error(getErrorMessage(error) || t('knowledge.loadFailed'))
+  } finally {
+    if (requestID === teamNormalRequestID) {
+      teamUngroupedFilesLoading.value = false
+      teamUngroupedFilesLoadingMore.value = false
+      void nextTick(() => {
+        checkAndLoadMoreTeamFiles()
+      })
+    }
+  }
+}
+
+const reloadTeamNormalContent = async () => {
+  if (!selectedTeamLibraryId.value) {
+    clearTeamNormalContent()
+    return
+  }
+  const requestID = ++teamNormalRequestID
+  if (teamLibraryTab.value === 0) {
+    await loadTeamLibraryGroups(selectedTeamLibraryId.value, requestID)
+    if (requestID !== teamNormalRequestID) return
+    await loadTeamUngroupedFiles(selectedTeamLibraryId.value, requestID)
+    return
+  }
+  teamNormalPage.value = 'files'
+  await loadTeamLibraryFiles(selectedTeamLibraryId.value, requestID, false, '')
+}
+
+const loadTeamQALibraryParagraphs = async (libraryID: string, requestID: number, append = false) => {
+  if (append) {
+    if (!teamQAParagraphsHasMore.value || teamQAParagraphsLoading.value || teamQAParagraphsLoadingMore.value) {
+      return
+    }
+    teamQAParagraphsLoadingMore.value = true
+  } else {
+    teamQAParagraphsPage.value = 1
+    teamQAParagraphsHasMore.value = true
+    teamQAParagraphsLoading.value = true
+  }
+  try {
+    const page = append ? teamQAParagraphsPage.value + 1 : 1
+    const result = await ChatWikiService.GetParagraphList(
+      libraryID,
+      '',
+      page,
+      TEAM_PAGE_SIZE,
+      -1,
+      -1,
+      -1,
+      -1,
+      '',
+      '',
+      teamQASearchKeyword.value
+    )
+    if (requestID !== teamNormalRequestID) return
+    const nextList = result?.list || []
+    const total = Number(result?.total ?? -1)
+    teamQAParagraphs.value = append ? [...teamQAParagraphs.value, ...nextList] : nextList
+    teamQAParagraphsPage.value = page
+    teamQAParagraphTotal.value = Number.isFinite(total) ? total : -1
+    if (teamQAParagraphTotal.value >= 0) {
+      teamQAParagraphsHasMore.value = page * TEAM_PAGE_SIZE < teamQAParagraphTotal.value
+    } else {
+      teamQAParagraphsHasMore.value = nextList.length >= TEAM_PAGE_SIZE
+    }
+  } catch (error) {
+    if (requestID !== teamNormalRequestID) return
+    if (!append) {
+      teamQAParagraphs.value = []
+    }
+    teamQAParagraphsHasMore.value = false
+    console.error('Failed to load team QA paragraphs:', error)
+    toast.error(getErrorMessage(error) || t('knowledge.loadFailed'))
+  } finally {
+    if (requestID === teamNormalRequestID) {
+      teamQAParagraphsLoading.value = false
+      teamQAParagraphsLoadingMore.value = false
+      void nextTick(() => {
+        checkAndLoadMoreTeamFiles()
+      })
+    }
+  }
+}
+
+const reloadTeamQAContent = async () => {
+  if (!selectedTeamLibraryId.value) {
+    clearTeamQAContent()
+    return
+  }
+  const requestID = ++teamNormalRequestID
+  await loadTeamQALibraryParagraphs(selectedTeamLibraryId.value, requestID)
+}
+
+const applyTeamQASearch = () => {
+  const keyword = teamQASearchInput.value.trim()
+  if (keyword === teamQASearchKeyword.value) return
+  teamQASearchKeyword.value = keyword
+  void reloadTeamQAContent()
+}
+
+const handleTeamGroupSelect = (groupID: string) => {
+  if (!selectedTeamLibraryId.value) return
+  selectedTeamGroupId.value = groupID
+  teamNormalPage.value = 'files'
+  const requestID = ++teamNormalRequestID
+  void loadTeamLibraryFiles(selectedTeamLibraryId.value, requestID, false, groupID)
+}
+
+const handleBackToTeamGroups = () => {
+  teamNormalPage.value = 'groups'
+  void nextTick(() => {
+    checkAndLoadMoreTeamFiles()
+  })
+}
+
+const checkAndLoadMoreTeamFiles = () => {
+  if (!selectedTeamLibraryId.value) return
+  const container = teamScrollContainerRef.value
+  if (!container) return
+  const remain = container.scrollHeight - container.scrollTop - container.clientHeight
+  if (remain > TEAM_LOAD_MORE_THRESHOLD) return
+
+  if (teamLibraryTab.value === 2) {
+    if (teamQAParagraphsHasMore.value && !teamQAParagraphsLoading.value && !teamQAParagraphsLoadingMore.value) {
+      void loadTeamQALibraryParagraphs(selectedTeamLibraryId.value, teamNormalRequestID, true)
+    }
+    return
+  }
+
+  if (teamLibraryTab.value === 0 && teamNormalPage.value === 'groups') {
+    if (
+      teamUngroupedFilesHasMore.value &&
+      !teamUngroupedFilesLoading.value &&
+      !teamUngroupedFilesLoadingMore.value
+    ) {
+      void loadTeamUngroupedFiles(selectedTeamLibraryId.value, teamNormalRequestID, true)
+    }
+    return
+  }
+
+  if (teamLibraryFilesHasMore.value && !teamLibraryFilesLoading.value && !teamLibraryFilesLoadingMore.value) {
+    const groupID = teamLibraryTab.value === 0 ? selectedTeamGroupId.value : ''
+    void loadTeamLibraryFiles(selectedTeamLibraryId.value, teamNormalRequestID, true, groupID)
+  }
+}
+
+const handleTeamFilesScroll = () => {
+  if (teamScrollRafID != null) return
+  teamScrollRafID = window.requestAnimationFrame(() => {
+    teamScrollRafID = null
+    checkAndLoadMoreTeamFiles()
+  })
+}
+
+const checkTeamBindingAndLoad = async () => {
+  teamBindingChecked.value = false
+  try {
+    const binding = await ChatWikiService.GetBinding()
+    teamBound.value = !!binding
+    if (!teamBound.value) {
+      teamLibraries.value = []
+      selectedTeamLibraryId.value = null
+      clearTeamQAContent()
+      return
+    }
+    await loadTeamLibraries()
+  } catch (error) {
+    console.error('Failed to check team binding:', error)
+    teamBound.value = false
+    teamLibraries.value = []
+    selectedTeamLibraryId.value = null
+    clearTeamQAContent()
+    toast.error(getErrorMessage(error) || t('knowledge.loadFailed'))
+  } finally {
+    teamBindingChecked.value = true
+  }
+}
+
 const handleCreated = async (lib: Library) => {
   // 立即插入列表（减少一次刷新等待），并选中
   libraries.value = [...libraries.value, lib].sort(
@@ -288,6 +803,35 @@ const confirmDelete = async () => {
 onMounted(() => {
   void loadLibraries()
 })
+
+onUnmounted(() => {
+  if (teamScrollRafID != null) {
+    window.cancelAnimationFrame(teamScrollRafID)
+    teamScrollRafID = null
+  }
+})
+
+watch(activeTab, (tab) => {
+  if (tab === 'team') {
+    void checkTeamBindingAndLoad()
+  }
+})
+
+watch(teamLibraryTab, () => {
+  if (activeTab.value !== 'team' || !teamBound.value) return
+  clearTeamNormalContent()
+  clearTeamQAContent()
+  void loadTeamLibraries()
+})
+
+watch([activeTab, teamLibraryTab, selectedTeamLibraryId], ([tab, libType, libraryID]) => {
+  if (tab !== 'team' || !libraryID) return
+  if (libType === 2) {
+    void reloadTeamQAContent()
+    return
+  }
+  void reloadTeamNormalContent()
+})
 </script>
 
 <template>
@@ -313,11 +857,15 @@ onMounted(() => {
           </button>
           <button
             type="button"
-            disabled
             :class="
-              cn('rounded px-3 py-1 text-sm transition-colors', 'cursor-not-allowed opacity-50')
+              cn(
+                'rounded px-3 py-1 text-sm transition-colors',
+                activeTab === 'team'
+                  ? 'bg-background text-foreground shadow-sm'
+                  : 'text-muted-foreground hover:text-foreground'
+              )
             "
-            :title="t('knowledge.tabs.teamDisabledTip')"
+            @click="activeTab = 'team'"
           >
             {{ t('knowledge.tabs.team') }}
           </button>
@@ -359,6 +907,85 @@ onMounted(() => {
           </div>
         </div>
 
+        <div v-else-if="activeTab === 'team'" class="flex flex-col gap-1">
+          <div
+            v-if="!teamBindingChecked || teamLibrariesLoading"
+            class="px-2 py-6 text-sm text-muted-foreground"
+          >
+            {{ t('knowledge.loading') }}
+          </div>
+          <div
+            v-else-if="!teamBound"
+            class="mx-2 mt-2 flex items-center justify-center rounded-lg border border-border bg-card p-4 text-sm text-muted-foreground"
+          >
+            {{ t('knowledge.team.needsBindingShort') }}
+          </div>
+          <div
+            v-else-if="teamLibraries.length === 0"
+            class="mx-2 mt-2 flex items-center justify-center rounded-lg border border-border bg-card p-4 text-sm text-muted-foreground"
+          >
+            {{ t('knowledge.team.empty') }}
+          </div>
+          <div v-else class="flex flex-col gap-1">
+            <div class="mx-1 mb-1 inline-flex rounded-md bg-muted p-1">
+              <button
+                type="button"
+                class="rounded px-2 py-1 text-xs transition-colors"
+                :class="
+                  teamLibraryTab === 0
+                    ? 'bg-background text-foreground shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground'
+                "
+                @click="teamLibraryTab = 0"
+              >
+                {{ t('settings.chatwiki.libraryType.normal').replace('知识库', '') }}
+              </button>
+              <button
+                type="button"
+                class="rounded px-2 py-1 text-xs transition-colors"
+                :class="
+                  teamLibraryTab === 2
+                    ? 'bg-background text-foreground shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground'
+                "
+                @click="teamLibraryTab = 2"
+              >
+                {{ t('settings.chatwiki.libraryType.qa').replace('知识库', '') }}
+              </button>
+              <button
+                type="button"
+                class="rounded px-2 py-1 text-xs transition-colors"
+                :class="
+                  teamLibraryTab === 3
+                    ? 'bg-background text-foreground shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground'
+                "
+                @click="teamLibraryTab = 3"
+              >
+                {{ t('settings.chatwiki.libraryType.wechat').replace('知识库', '') }}
+              </button>
+            </div>
+            <div
+              v-for="lib in teamLibraries"
+              :key="lib.id"
+              class="flex h-10 items-center gap-2 rounded-lg px-2 text-left text-sm font-normal transition-colors"
+              :class="
+                cn(
+                  selectedTeamLibraryId === lib.id
+                    ? 'bg-accent text-accent-foreground'
+                    : 'text-foreground hover:bg-accent/50'
+                )
+              "
+              role="button"
+              @click="selectedTeamLibraryId = lib.id"
+            >
+              <span class="min-w-0 flex-1 truncate" :title="lib.name">
+                {{ lib.name }}
+              </span>
+            </div>
+          </div>
+        </div>
+
         <div v-else class="flex flex-col gap-1">
           <div v-for="lib in libraries" :key="lib.id" class="flex flex-col gap-0.5">
             <!-- 知识库项 -->
@@ -369,10 +996,12 @@ onMounted(() => {
                 @click="toggleLibraryExpanded(lib.id)"
               >
                 <ChevronRight
-                  :class="cn(
-                    'size-3.5 transition-transform',
-                    expandedLibraries.has(lib.id) && 'rotate-90'
-                  )"
+                  :class="
+                    cn(
+                      'size-3.5 transition-transform',
+                      expandedLibraries.has(lib.id) && 'rotate-90'
+                    )
+                  "
                 />
               </button>
               <button
@@ -420,10 +1049,7 @@ onMounted(() => {
               </button>
             </div>
             <!-- 文件夹树 -->
-            <div
-              v-if="expandedLibraries.has(lib.id)"
-              class="ml-4 flex flex-col gap-0.5"
-            >
+            <div v-if="expandedLibraries.has(lib.id)" class="ml-4 flex flex-col gap-0.5">
               <!-- 未分组选项 -->
               <div class="flex items-center gap-1">
                 <div class="size-6 shrink-0" />
@@ -468,12 +1094,421 @@ onMounted(() => {
 
     <!-- 右侧：内容区 -->
     <main class="flex flex-1 flex-col overflow-hidden bg-background">
-      <!-- 团队知识库暂未开放 -->
-      <div v-if="activeTab !== 'personal'" class="flex h-full items-center justify-center px-8">
+      <!-- 团队知识库 -->
+      <div
+        v-if="activeTab === 'team' && !teamBindingChecked"
+        class="flex h-full items-center justify-center px-8"
+      >
         <div
           class="rounded-2xl border border-border bg-card p-8 text-muted-foreground shadow-sm dark:border-white/15 dark:shadow-none dark:ring-1 dark:ring-white/5"
         >
-          {{ t('knowledge.teamNotReady') }}
+          {{ t('knowledge.loading') }}
+        </div>
+      </div>
+
+      <div
+        v-else-if="activeTab === 'team' && !teamBound"
+        class="flex h-full items-center justify-center px-8"
+      >
+        <div
+          class="flex max-w-xl flex-col items-center gap-4 rounded-2xl border border-border bg-card p-8 text-center shadow-sm dark:border-white/15 dark:shadow-none dark:ring-1 dark:ring-white/5"
+        >
+          <p class="text-sm text-muted-foreground">
+            {{ t('knowledge.team.needsBinding') }}
+          </p>
+          <Button @click="goToChatwikiBindingSettings">
+            {{ t('knowledge.team.goBind') }}
+          </Button>
+        </div>
+      </div>
+
+      <div
+        v-else-if="activeTab === 'team' && teamLibrariesLoading"
+        class="flex h-full items-center justify-center px-8"
+      >
+        <div
+          class="rounded-2xl border border-border bg-card p-8 text-muted-foreground shadow-sm dark:border-white/15 dark:shadow-none dark:ring-1 dark:ring-white/5"
+        >
+          {{ t('knowledge.loading') }}
+        </div>
+      </div>
+
+      <div
+        v-else-if="activeTab === 'team' && !selectedTeamLibrary"
+        class="flex h-full items-center justify-center px-8"
+      >
+        <div
+          class="rounded-2xl border border-border bg-card p-8 text-muted-foreground shadow-sm dark:border-white/15 dark:shadow-none dark:ring-1 dark:ring-white/5"
+        >
+          {{ t('knowledge.team.empty') }}
+        </div>
+      </div>
+
+      <div v-else-if="activeTab === 'team' && teamLibraryTab === 0" class="flex min-h-0 flex-1 flex-col">
+        <div class="border-b border-border px-4 py-3">
+          <div class="flex items-start justify-between gap-3">
+            <div class="min-w-0">
+              <h3 class="text-base font-medium text-foreground">{{ selectedTeamLibrary?.name ?? '' }}</h3>
+              <p class="mt-1 text-sm text-muted-foreground">
+                {{ selectedTeamLibrary?.intro || t('knowledge.team.noIntro') }}
+              </p>
+            </div>
+            <div class="shrink-0">
+              <Input
+                v-model="teamNormalSearchInput"
+                class="h-8 w-48 md:w-56"
+                :placeholder="t('knowledge.content.searchPlaceholder')"
+                @keydown.enter="applyTeamNormalSearch"
+              />
+            </div>
+          </div>
+        </div>
+        <div ref="teamScrollContainerRef" class="flex-1 overflow-auto p-4" @scroll.passive="handleTeamFilesScroll">
+          <div
+            v-if="teamNormalPage === 'groups' && (teamLibraryGroupsLoading || teamUngroupedFilesLoading)"
+            class="flex h-full items-center justify-center"
+          >
+            <div class="text-sm text-muted-foreground">{{ t('knowledge.loading') }}</div>
+          </div>
+          <div
+            v-else-if="teamNormalPage === 'groups' && teamGroupCards.length === 0 && teamUngroupedFiles.length === 0"
+            class="flex h-full items-center justify-center text-sm text-muted-foreground"
+          >
+            {{ t('knowledge.team.noFiles') }}
+          </div>
+          <div
+            v-else-if="teamNormalPage === 'groups'"
+            class="grid auto-rows-max gap-4"
+            style="grid-template-columns: repeat(auto-fill, minmax(166px, 1fr))"
+          >
+            <button
+              v-for="group in teamGroupCards"
+              :key="`team-group-${group.id}`"
+              type="button"
+              class="group rounded-xl border border-border bg-card p-3 text-left shadow-sm transition-colors hover:bg-accent/20 dark:border-white/15 dark:shadow-none dark:ring-1 dark:ring-white/5"
+              @click="handleTeamGroupSelect(group.id)"
+            >
+              <div class="grid h-28 w-full place-items-center rounded-lg bg-muted/60 dark:bg-white/5">
+                <FolderIcon class="size-10 text-muted-foreground" />
+              </div>
+              <p class="mt-2 line-clamp-2 min-h-9 text-sm text-foreground" :title="group.name">
+                {{ group.name }}
+              </p>
+              <div class="mt-1 text-xs text-muted-foreground">
+                {{ t('knowledge.team.groupFileCount', { count: Math.max(0, Number(group.total || 0)) }) }}
+              </div>
+            </button>
+            <div
+              v-for="file in teamUngroupedFiles"
+              :key="`root-ungrouped-${file.id}`"
+              class="group rounded-xl border border-border bg-card p-3 shadow-sm transition-colors hover:bg-accent/20 dark:border-white/15 dark:shadow-none dark:ring-1 dark:ring-white/5"
+            >
+              <div class="relative mb-2">
+                <div
+                  v-if="canShowTeamFileThumb(file)"
+                  class="grid h-28 w-full place-items-center overflow-hidden rounded-lg bg-muted/40 dark:bg-white/5"
+                >
+                  <img
+                    :src="getTeamFileThumbUrl(file)"
+                    alt=""
+                    class="h-full w-full object-contain"
+                    @error="handleTeamFileThumbError(file)"
+                  />
+                </div>
+                <div
+                  v-else
+                  class="grid h-28 w-full place-items-center rounded-lg bg-muted/60 dark:bg-white/5"
+                >
+                  <component :is="getTeamFileIcon(file)" class="size-6 text-muted-foreground" />
+                </div>
+                <span
+                  v-if="getTeamFileStatusLabel(file.status)"
+                  class="absolute right-1.5 top-1.5 rounded bg-background/90 px-1.5 py-0.5 text-[10px] text-muted-foreground backdrop-blur"
+                >
+                  {{ getTeamFileStatusLabel(file.status) }}
+                </span>
+              </div>
+              <p class="line-clamp-2 min-h-9 text-sm text-foreground" :title="file.name">
+                {{ file.name }}
+              </p>
+              <div class="mt-3 flex items-center justify-between text-xs text-muted-foreground">
+                <span>{{ getTeamFileExtension(file) || '-' }}</span>
+                <span>{{ formatTeamFileDate(file.updated_at) }}</span>
+              </div>
+            </div>
+            <div
+              v-for="idx in (teamUngroupedFilesLoadingMore ? TEAM_SKELETON_COUNT : 0)"
+              :key="`root-ungrouped-skeleton-${idx}`"
+              class="rounded-xl border border-border bg-card p-3 dark:border-white/15 dark:ring-1 dark:ring-white/5"
+            >
+              <div class="h-28 w-full animate-pulse rounded-lg bg-muted/50 dark:bg-white/10" />
+              <div class="mt-3 h-3 w-4/5 animate-pulse rounded bg-muted/50 dark:bg-white/10" />
+              <div class="mt-2 h-3 w-1/2 animate-pulse rounded bg-muted/50 dark:bg-white/10" />
+            </div>
+          </div>
+          <div v-else class="mb-3 flex items-center gap-2">
+            <Button variant="outline" size="sm" @click="handleBackToTeamGroups">
+              {{ t('settings.chatwiki.back') }}
+            </Button>
+            <p class="text-sm text-muted-foreground">
+              {{ selectedTeamGroupName || t('knowledge.team.allGroups') }}
+            </p>
+          </div>
+          <div v-if="teamNormalPage === 'files' && teamLibraryFilesLoading" class="flex h-full items-center justify-center">
+            <div class="text-sm text-muted-foreground">{{ t('knowledge.loading') }}</div>
+          </div>
+          <div
+            v-else-if="teamNormalPage === 'files' && teamLibraryFiles.length === 0"
+            class="flex h-full items-center justify-center text-sm text-muted-foreground"
+          >
+            {{ t('knowledge.team.noFiles') }}
+          </div>
+          <div
+            v-else-if="teamNormalPage === 'files'"
+            class="grid auto-rows-max gap-4"
+            style="grid-template-columns: repeat(auto-fill, minmax(166px, 1fr))"
+          >
+            <div
+              v-for="file in teamLibraryFiles"
+              :key="file.id"
+              class="group rounded-xl border border-border bg-card p-3 shadow-sm transition-colors hover:bg-accent/20 dark:border-white/15 dark:shadow-none dark:ring-1 dark:ring-white/5"
+            >
+              <div class="relative mb-2">
+                <div
+                  v-if="canShowTeamFileThumb(file)"
+                  class="grid h-28 w-full place-items-center overflow-hidden rounded-lg bg-muted/40 dark:bg-white/5"
+                >
+                  <img
+                    :src="getTeamFileThumbUrl(file)"
+                    alt=""
+                    class="h-full w-full object-contain"
+                    @error="handleTeamFileThumbError(file)"
+                  />
+                </div>
+                <div
+                  v-else
+                  class="grid h-28 w-full place-items-center rounded-lg bg-muted/60 dark:bg-white/5"
+                >
+                  <component :is="getTeamFileIcon(file)" class="size-6 text-muted-foreground" />
+                </div>
+                <span
+                  v-if="getTeamFileStatusLabel(file.status)"
+                  class="absolute right-1.5 top-1.5 rounded bg-background/90 px-1.5 py-0.5 text-[10px] text-muted-foreground backdrop-blur"
+                >
+                  {{ getTeamFileStatusLabel(file.status) }}
+                </span>
+              </div>
+              <p class="line-clamp-2 min-h-9 text-sm text-foreground" :title="file.name">
+                {{ file.name }}
+              </p>
+              <div class="mt-3 flex items-center justify-between text-xs text-muted-foreground">
+                <span>{{ getTeamFileExtension(file) || '-' }}</span>
+                <span>{{ formatTeamFileDate(file.updated_at) }}</span>
+              </div>
+            </div>
+            <div
+              v-for="idx in (teamLibraryFilesLoadingMore ? TEAM_SKELETON_COUNT : 0)"
+              :key="`team-files-skeleton-${idx}`"
+              class="rounded-xl border border-border bg-card p-3 dark:border-white/15 dark:ring-1 dark:ring-white/5"
+            >
+              <div class="h-28 w-full animate-pulse rounded-lg bg-muted/50 dark:bg-white/10" />
+              <div class="mt-3 h-3 w-4/5 animate-pulse rounded bg-muted/50 dark:bg-white/10" />
+              <div class="mt-2 h-3 w-1/2 animate-pulse rounded bg-muted/50 dark:bg-white/10" />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div v-else-if="activeTab === 'team' && teamLibraryTab === 3" class="flex min-h-0 flex-1 flex-col">
+        <div class="border-b border-border px-4 py-3">
+          <div class="flex items-start justify-between gap-3">
+            <div class="min-w-0">
+              <h3 class="text-base font-medium text-foreground">{{ selectedTeamLibrary?.name ?? '' }}</h3>
+              <p class="mt-1 text-sm text-muted-foreground">
+                {{ selectedTeamLibrary?.intro || t('knowledge.team.noIntro') }}
+              </p>
+            </div>
+            <div class="shrink-0">
+              <Input
+                v-model="teamNormalSearchInput"
+                class="h-8 w-48 md:w-56"
+                :placeholder="t('knowledge.content.searchPlaceholder')"
+                @keydown.enter="applyTeamNormalSearch"
+              />
+            </div>
+          </div>
+        </div>
+        <div ref="teamScrollContainerRef" class="flex-1 overflow-auto p-4" @scroll.passive="handleTeamFilesScroll">
+          <div v-if="teamLibraryFilesLoading" class="flex h-full items-center justify-center">
+            <div class="text-sm text-muted-foreground">{{ t('knowledge.loading') }}</div>
+          </div>
+          <div
+            v-else-if="teamLibraryFiles.length === 0"
+            class="flex h-full items-center justify-center text-sm text-muted-foreground"
+          >
+            {{ t('knowledge.team.noFiles') }}
+          </div>
+          <div
+            v-else
+            class="grid auto-rows-max gap-4"
+            style="grid-template-columns: repeat(auto-fill, minmax(166px, 1fr))"
+          >
+            <div
+              v-for="file in teamLibraryFiles"
+              :key="file.id"
+              class="group rounded-xl border border-border bg-card p-3 shadow-sm transition-colors hover:bg-accent/20 dark:border-white/15 dark:shadow-none dark:ring-1 dark:ring-white/5"
+            >
+              <div class="relative mb-2">
+                <div
+                  v-if="canShowTeamFileThumb(file)"
+                  class="grid h-28 w-full place-items-center overflow-hidden rounded-lg bg-muted/40 dark:bg-white/5"
+                >
+                  <img
+                    :src="getTeamFileThumbUrl(file)"
+                    alt=""
+                    class="h-full w-full object-contain"
+                    @error="handleTeamFileThumbError(file)"
+                  />
+                </div>
+                <div
+                  v-else
+                  class="grid h-28 w-full place-items-center rounded-lg bg-muted/60 dark:bg-white/5"
+                >
+                  <component :is="getTeamFileIcon(file)" class="size-6 text-muted-foreground" />
+                </div>
+                <span
+                  v-if="getTeamFileStatusLabel(file.status)"
+                  class="absolute right-1.5 top-1.5 rounded bg-background/90 px-1.5 py-0.5 text-[10px] text-muted-foreground backdrop-blur"
+                >
+                  {{ getTeamFileStatusLabel(file.status) }}
+                </span>
+              </div>
+              <p class="line-clamp-2 min-h-9 text-sm text-foreground" :title="file.name">
+                {{ file.name }}
+              </p>
+              <div class="mt-3 flex items-center justify-between text-xs text-muted-foreground">
+                <span>{{ getTeamFileExtension(file) || '-' }}</span>
+                <span>{{ formatTeamFileDate(file.updated_at) }}</span>
+              </div>
+            </div>
+            <div
+              v-for="idx in (teamLibraryFilesLoadingMore ? TEAM_SKELETON_COUNT : 0)"
+              :key="`wechat-files-skeleton-${idx}`"
+              class="rounded-xl border border-border bg-card p-3 dark:border-white/15 dark:ring-1 dark:ring-white/5"
+            >
+              <div class="h-28 w-full animate-pulse rounded-lg bg-muted/50 dark:bg-white/10" />
+              <div class="mt-3 h-3 w-4/5 animate-pulse rounded bg-muted/50 dark:bg-white/10" />
+              <div class="mt-2 h-3 w-1/2 animate-pulse rounded bg-muted/50 dark:bg-white/10" />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div v-else-if="activeTab === 'team' && teamLibraryTab === 2" class="flex min-h-0 flex-1 flex-col">
+        <div class="border-b border-border px-4 py-3">
+          <div class="flex items-start justify-between gap-3">
+            <div class="min-w-0">
+              <div class="flex items-center gap-2">
+                <h3 class="text-base font-medium text-foreground">{{ selectedTeamLibrary?.name ?? '' }}</h3>
+                <span v-if="teamQAParagraphTotal >= 0" class="text-xs text-muted-foreground">
+                  {{ t('knowledge.team.qa.total', { count: teamQAParagraphTotal }) }}
+                </span>
+              </div>
+              <p class="mt-1 text-sm text-muted-foreground">
+                {{ selectedTeamLibrary?.intro || t('knowledge.team.noIntro') }}
+              </p>
+            </div>
+            <div class="shrink-0">
+              <Input
+                v-model="teamQASearchInput"
+                class="h-8 w-48 md:w-56"
+                :placeholder="t('knowledge.team.qa.searchPlaceholder')"
+                @keydown.enter="applyTeamQASearch"
+              />
+            </div>
+          </div>
+        </div>
+        <div ref="teamScrollContainerRef" class="flex-1 overflow-auto p-4" @scroll.passive="handleTeamFilesScroll">
+          <div v-if="teamQAParagraphsLoading" class="flex h-full items-center justify-center">
+            <div class="text-sm text-muted-foreground">{{ t('knowledge.loading') }}</div>
+          </div>
+          <div
+            v-else-if="teamQAParagraphs.length === 0"
+            class="flex h-full items-center justify-center text-sm text-muted-foreground"
+          >
+            {{ t('knowledge.team.noParagraphs') }}
+          </div>
+          <div v-else class="space-y-3">
+            <div
+              v-for="paragraph in teamQAParagraphs"
+              :key="paragraph.id"
+              class="rounded-xl border border-border bg-card p-4 shadow-sm dark:border-white/15 dark:shadow-none dark:ring-1 dark:ring-white/5"
+            >
+              <div class="text-sm font-medium text-foreground">
+                {{ t('knowledge.team.qa.question') }} {{ paragraph.question || '-' }}
+              </div>
+              <div class="mt-2 text-sm text-muted-foreground">
+                {{ t('knowledge.team.qa.answer') }} {{ paragraph.answer || '-' }}
+              </div>
+              <div v-if="paragraph.images.length > 0" class="mt-3 flex flex-wrap gap-2">
+                <img
+                  v-for="(imgURL, idx) in paragraph.images"
+                  :key="`${paragraph.id}-img-${idx}`"
+                  :src="imgURL"
+                  alt=""
+                  class="h-16 w-16 rounded-md border border-border object-cover"
+                />
+              </div>
+            </div>
+            <div
+              v-for="idx in (teamQAParagraphsLoadingMore ? TEAM_SKELETON_COUNT : 0)"
+              :key="`qa-skeleton-${idx}`"
+              class="rounded-xl border border-border bg-card p-3 dark:border-white/15 dark:ring-1 dark:ring-white/5"
+            >
+              <div class="h-3 w-4/5 animate-pulse rounded bg-muted/50 dark:bg-white/10" />
+              <div class="mt-3 h-3 w-full animate-pulse rounded bg-muted/50 dark:bg-white/10" />
+              <div class="mt-2 h-3 w-2/3 animate-pulse rounded bg-muted/50 dark:bg-white/10" />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div v-else-if="activeTab === 'team'" class="flex h-full items-center justify-center px-8">
+        <div
+          class="w-full max-w-3xl rounded-2xl border border-border bg-card p-6 shadow-sm dark:border-white/15 dark:shadow-none dark:ring-1 dark:ring-white/5"
+        >
+          <div class="space-y-1 border-b border-border pb-4">
+            <h3 class="text-base font-medium text-foreground">{{ selectedTeamLibrary?.name ?? '' }}</h3>
+            <p class="text-sm text-muted-foreground">
+              {{ selectedTeamLibrary?.intro || t('knowledge.team.noIntro') }}
+            </p>
+          </div>
+          <div class="grid grid-cols-1 gap-3 pt-4 text-sm md:grid-cols-2">
+            <div class="rounded-lg bg-muted/30 p-3 dark:bg-white/5">
+              <p class="text-xs text-muted-foreground">{{ t('knowledge.team.fields.id') }}</p>
+              <p class="mt-1 text-foreground">{{ selectedTeamLibrary?.id ?? '' }}</p>
+            </div>
+            <div class="rounded-lg bg-muted/30 p-3 dark:bg-white/5">
+              <p class="text-xs text-muted-foreground">{{ t('knowledge.team.fields.type') }}</p>
+              <p class="mt-1 text-foreground">
+                {{ selectedTeamLibrary?.type_name || selectedTeamLibrary?.type || '' }}
+              </p>
+            </div>
+            <div class="rounded-lg bg-muted/30 p-3 dark:bg-white/5">
+              <p class="text-xs text-muted-foreground">{{ t('knowledge.team.fields.status') }}</p>
+              <p class="mt-1 text-foreground">
+                {{
+                  selectedTeamLibrary?.chat_claw_switch_status === 1
+                    ? t('knowledge.team.status.enabled')
+                    : t('knowledge.team.status.disabled')
+                }}
+              </p>
+            </div>
+            <div class="rounded-lg bg-muted/30 p-3 dark:bg-white/5">
+              <p class="text-xs text-muted-foreground">{{ t('knowledge.team.fields.scope') }}</p>
+              <p class="mt-1 text-foreground">{{ t('knowledge.team.scopeChatwiki') }}</p>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -509,8 +1544,8 @@ onMounted(() => {
       <!-- 知识库内容管理 -->
       <LibraryContentArea
         v-else
-        :key="`${selectedLibrary.id}-${selectedFolderId}`"
-        :library="selectedLibrary"
+        :key="`${selectedLibrary?.id ?? ''}-${selectedFolderId}`"
+        :library="selectedLibrary!"
         :selected-folder-id="selectedFolderId"
         @folder-selected="handleFolderSelected"
         @folder-created="handleFolderCreated"
@@ -519,7 +1554,11 @@ onMounted(() => {
       />
 
       <!-- Bottom chat input shortcut (hidden when no libraries exist) -->
-      <KnowledgeChatInput v-if="!isLibraryEmpty" :selected-library-id="selectedLibraryId" :tab-id="tabId" />
+      <KnowledgeChatInput
+        v-if="isPersonalTab && !isLibraryEmpty"
+        :selected-library-id="selectedLibraryId"
+        :tab-id="tabId"
+      />
     </main>
 
     <CreateLibraryDialog v-model:open="createDialogOpen" @created="handleCreated" />

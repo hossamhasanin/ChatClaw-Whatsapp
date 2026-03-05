@@ -53,6 +53,38 @@ type Library struct {
 	SwitchStatus int    `json:"chat_claw_switch_status"`
 }
 
+// LibraryGroup represents a ChatWiki file group in a knowledge base.
+type LibraryGroup struct {
+	ID    string `json:"id"`
+	Name  string `json:"name"`
+	Total int    `json:"total"`
+}
+
+// LibraryFile represents a ChatWiki file item in a knowledge base.
+type LibraryFile struct {
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	Extension string `json:"extension"`
+	Status    int    `json:"status"`
+	UpdatedAt string `json:"updated_at"`
+	ThumbPath string `json:"thumb_path"`
+}
+
+// LibraryParagraph represents a QA paragraph item in a knowledge base.
+type LibraryParagraph struct {
+	ID       string   `json:"id"`
+	Question string   `json:"question"`
+	Answer   string   `json:"answer"`
+	Images   []string `json:"images"`
+}
+
+// LibraryParagraphPage represents a page result for QA paragraphs.
+// Total is -1 when upstream does not return a reliable total count.
+type LibraryParagraphPage struct {
+	List  []LibraryParagraph `json:"list"`
+	Total int                `json:"total"`
+}
+
 type chatWikiRobotRaw struct {
 	ID              string `json:"id"`
 	RobotKey        string `json:"robot_key"`
@@ -256,9 +288,19 @@ func (s *ChatWikiService) GetRobotList() ([]Robot, error) {
 	return robots, nil
 }
 
-// GetLibraryList fetches the knowledge base list from ChatWiki API.
+// GetLibraryList fetches the full knowledge base list from ChatWiki API.
 // libType: 0=normal, 2=QA, 3=wechat-official-account
 func (s *ChatWikiService) GetLibraryList(libType int) ([]Library, error) {
+	return s.getLibraryList(libType, 0)
+}
+
+// GetLibraryListOnlyOpen fetches only enabled knowledge bases from ChatWiki API.
+// libType: 0=normal, 2=QA, 3=wechat-official-account
+func (s *ChatWikiService) GetLibraryListOnlyOpen(libType int) ([]Library, error) {
+	return s.getLibraryList(libType, 1)
+}
+
+func (s *ChatWikiService) getLibraryList(libType int, onlyOpen int) ([]Library, error) {
 	binding, err := s.GetBinding()
 	if err != nil || binding == nil {
 		return nil, fmt.Errorf("no binding found")
@@ -267,12 +309,13 @@ func (s *ChatWikiService) GetLibraryList(libType int) ([]Library, error) {
 	baseURL := strings.TrimRight(binding.ServerURL, "/")
 	q := url.Values{}
 	q.Set("type", strconv.Itoa(libType))
-	q.Set("only_open", "0")
+	q.Set("only_open", strconv.Itoa(onlyOpen))
 	apiURL := baseURL + "/manage/chatclaw/getLibraryList?" + q.Encode()
 
 	s.app.Logger.Info("[ChatWiki] GetLibraryList request",
 		"url", apiURL,
 		"type", libType,
+		"only_open", onlyOpen,
 		"token_length", len(binding.Token),
 	)
 
@@ -300,6 +343,7 @@ func (s *ChatWikiService) GetLibraryList(libType int) ([]Library, error) {
 	s.app.Logger.Info("[ChatWiki] GetLibraryList response",
 		"status", resp.StatusCode,
 		"type", libType,
+		"only_open", onlyOpen,
 		"body", string(body),
 	)
 
@@ -343,6 +387,276 @@ func (s *ChatWikiService) GetLibraryList(libType int) ([]Library, error) {
 		})
 	}
 	return libraries, nil
+}
+
+// GetLibraryGroup fetches folder groups for the specified knowledge base.
+// groupType is fixed to 1 for chatclaw integration.
+func (s *ChatWikiService) GetLibraryGroup(libraryID string, groupType int) ([]LibraryGroup, error) {
+	binding, err := s.GetBinding()
+	if err != nil || binding == nil {
+		return nil, fmt.Errorf("no binding found")
+	}
+	libraryID = strings.TrimSpace(libraryID)
+	if libraryID == "" {
+		return nil, fmt.Errorf("library_id is required")
+	}
+	if groupType <= 0 {
+		groupType = 1
+	}
+
+	baseURL := strings.TrimRight(binding.ServerURL, "/")
+	q := url.Values{}
+	q.Set("library_id", libraryID)
+	q.Set("group_type", strconv.Itoa(groupType))
+	apiURL := baseURL + "/manage/chatclaw/getLibraryGroup?" + q.Encode()
+
+	s.app.Logger.Info("[ChatWiki] GetLibraryGroup request",
+		"url", apiURL,
+		"library_id", libraryID,
+		"group_type", groupType,
+	)
+
+	body, err := s.chatWikiGET(binding.Token, apiURL)
+	if err != nil {
+		return nil, err
+	}
+
+	items, err := decodeAPIDataObjectArray(body)
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]LibraryGroup, 0, len(items)+1)
+	allGroupTotal := 0
+	for _, item := range items {
+		id := getStringByKeys(item, "group_id", "id")
+		if id == "" {
+			continue
+		}
+		name := getStringByKeys(item, "group_name", "name")
+		total := getIntByKeys(item, "total", "count", "total_count", "total_num", "file_count")
+		allGroupTotal += total
+		result = append(result, LibraryGroup{
+			ID:    id,
+			Name:  name,
+			Total: total,
+		})
+	}
+	result = append([]LibraryGroup{{
+		ID:    "-1",
+		Name:  "全部分组",
+		Total: allGroupTotal,
+	}}, result...)
+	return result, nil
+}
+
+// GetLibFileList fetches the file list in a knowledge base.
+// groupID is optional; pass an empty string to query all files.
+func (s *ChatWikiService) GetLibFileList(
+	libraryID string,
+	status string,
+	page int,
+	size int,
+	sortField string,
+	sortType string,
+	groupID string,
+	fileName string,
+) ([]LibraryFile, error) {
+	binding, err := s.GetBinding()
+	if err != nil || binding == nil {
+		return nil, fmt.Errorf("no binding found")
+	}
+	libraryID = strings.TrimSpace(libraryID)
+	if libraryID == "" {
+		return nil, fmt.Errorf("library_id is required")
+	}
+	if page < 1 {
+		page = 1
+	}
+	if size < 1 {
+		size = 10
+	}
+
+	baseURL := strings.TrimRight(binding.ServerURL, "/")
+	q := url.Values{}
+	q.Set("library_id", libraryID)
+	if strings.TrimSpace(status) != "" {
+		q.Set("status", strings.TrimSpace(status))
+	}
+	q.Set("page", strconv.Itoa(page))
+	q.Set("size", strconv.Itoa(size))
+	if strings.TrimSpace(sortField) != "" {
+		q.Set("sort_field", strings.TrimSpace(sortField))
+	}
+	if strings.TrimSpace(sortType) != "" {
+		q.Set("sort_type", strings.TrimSpace(sortType))
+	}
+	if strings.TrimSpace(groupID) != "" {
+		q.Set("group_id", strings.TrimSpace(groupID))
+	}
+	if strings.TrimSpace(fileName) != "" {
+		q.Set("file_name", strings.TrimSpace(fileName))
+	}
+	apiURL := baseURL + "/manage/chatclaw/getLibFileList?" + q.Encode()
+
+	s.app.Logger.Info("[ChatWiki] GetLibFileList request",
+		"url", apiURL,
+		"library_id", libraryID,
+		"status", strings.TrimSpace(status),
+		"page", page,
+		"size", size,
+		"sort_field", strings.TrimSpace(sortField),
+		"sort_type", strings.TrimSpace(sortType),
+		"group_id", strings.TrimSpace(groupID),
+		"file_name", strings.TrimSpace(fileName),
+	)
+
+	body, err := s.chatWikiGET(binding.Token, apiURL)
+	if err != nil {
+		return nil, err
+	}
+
+	items, err := decodeAPIDataObjectArray(body)
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]LibraryFile, 0, len(items))
+	for _, item := range items {
+		id := getStringByKeys(item, "id", "file_id")
+		if id == "" {
+			continue
+		}
+		name := getStringByKeys(item, "file_name", "name", "origin_name")
+		if name == "" {
+			name = id
+		}
+		ext := strings.TrimPrefix(getStringByKeys(item, "extension", "ext"), ".")
+		statusInt := getIntByKeys(item, "status", "parse_status")
+		updatedAt := getStringByKeys(item, "updated_at", "create_time", "created_at")
+		thumbPath := normalizeAssetURL(binding.ServerURL, getStringByKeys(item, "thumb_path"))
+
+		result = append(result, LibraryFile{
+			ID:        id,
+			Name:      name,
+			Extension: ext,
+			Status:    statusInt,
+			UpdatedAt: updatedAt,
+			ThumbPath: thumbPath,
+		})
+	}
+	return result, nil
+}
+
+// GetParagraphList fetches paragraph list for QA knowledge base.
+// libraryID and fileID are mutually optional, but at least one must be provided.
+func (s *ChatWikiService) GetParagraphList(
+	libraryID string,
+	fileID string,
+	page int,
+	size int,
+	status int,
+	graphStatus int,
+	categoryID int,
+	groupID int,
+	sortField string,
+	sortType string,
+	search string,
+) (LibraryParagraphPage, error) {
+	binding, err := s.GetBinding()
+	if err != nil || binding == nil {
+		return LibraryParagraphPage{}, fmt.Errorf("no binding found")
+	}
+	libraryID = strings.TrimSpace(libraryID)
+	fileID = strings.TrimSpace(fileID)
+	if libraryID == "" && fileID == "" {
+		return LibraryParagraphPage{}, fmt.Errorf("library_id or file_id is required")
+	}
+	if page < 1 {
+		page = 1
+	}
+	if size < 1 {
+		size = 10
+	}
+
+	baseURL := strings.TrimRight(binding.ServerURL, "/")
+	q := url.Values{}
+	if libraryID != "" {
+		q.Set("library_id", libraryID)
+	}
+	if fileID != "" {
+		q.Set("file_id", fileID)
+	}
+	q.Set("page", strconv.Itoa(page))
+	q.Set("size", strconv.Itoa(size))
+	q.Set("status", strconv.Itoa(status))
+	q.Set("graph_status", strconv.Itoa(graphStatus))
+	q.Set("category_id", strconv.Itoa(categoryID))
+	q.Set("group_id", strconv.Itoa(groupID))
+	if strings.TrimSpace(sortField) != "" {
+		q.Set("sort_field", strings.TrimSpace(sortField))
+	}
+	if strings.TrimSpace(sortType) != "" {
+		q.Set("sort_type", strings.TrimSpace(sortType))
+	}
+	if strings.TrimSpace(search) != "" {
+		q.Set("search", strings.TrimSpace(search))
+	}
+	apiURL := baseURL + "/manage/chatclaw/getParagraphList?" + q.Encode()
+
+	s.app.Logger.Info("[ChatWiki] GetParagraphList request",
+		"url", apiURL,
+		"library_id", libraryID,
+		"file_id", fileID,
+		"page", page,
+		"size", size,
+		"status", status,
+		"graph_status", graphStatus,
+		"category_id", categoryID,
+		"group_id", groupID,
+		"sort_field", strings.TrimSpace(sortField),
+		"sort_type", strings.TrimSpace(sortType),
+		"search", strings.TrimSpace(search),
+	)
+
+	body, err := s.chatWikiGETLoose(binding.Token, apiURL)
+	if err != nil {
+		return LibraryParagraphPage{}, err
+	}
+
+	items, total, hasTotal, err := decodeAPIDataObjectArrayWithTotal(body)
+	if err != nil {
+		return LibraryParagraphPage{}, err
+	}
+
+	result := make([]LibraryParagraph, 0, len(items))
+	for _, item := range items {
+		id := getStringByKeys(item, "id", "paragraph_id", "qa_id")
+		question := getStringByKeys(item, "question", "title", "q", "query")
+		answer := getStringByKeys(item, "answer", "content", "a")
+		images := getStringSliceByKeys(item, "images", "image_list", "pics", "pic_list", "attachments", "files")
+		normalizedImages := make([]string, 0, len(images))
+		for _, rawURL := range images {
+			fullURL := normalizeAssetURL(binding.ServerURL, rawURL)
+			if strings.TrimSpace(fullURL) == "" {
+				continue
+			}
+			normalizedImages = append(normalizedImages, fullURL)
+		}
+		result = append(result, LibraryParagraph{
+			ID:       id,
+			Question: question,
+			Answer:   answer,
+			Images:   normalizedImages,
+		})
+	}
+	if !hasTotal {
+		total = -1
+	}
+	return LibraryParagraphPage{
+		List:  result,
+		Total: total,
+	}, nil
 }
 
 // UpdateRobotSwitchStatus updates the robot switch status.
@@ -544,4 +858,303 @@ func parseSwitchStatus(v string) int {
 		return 1
 	}
 	return 0
+}
+
+func (s *ChatWikiService) chatWikiGET(token string, apiURL string) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("create request: %w", err)
+	}
+	req.Header.Set("Token", token)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read response body: %w", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("unexpected status %d: %s", resp.StatusCode, string(body))
+	}
+
+	var apiResp struct {
+		Res  int             `json:"res"`
+		Code int             `json:"code"`
+		Msg  string          `json:"msg"`
+		Data json.RawMessage `json:"data"`
+	}
+	if err := json.Unmarshal(body, &apiResp); err != nil {
+		return nil, fmt.Errorf("decode response: %w", err)
+	}
+	resultCode := apiResp.Res
+	if resultCode == 0 && apiResp.Code != 0 {
+		resultCode = apiResp.Code
+	}
+	if resultCode != 0 {
+		return nil, fmt.Errorf("API error code=%d msg=%s", resultCode, apiResp.Msg)
+	}
+
+	return apiResp.Data, nil
+}
+
+// chatWikiGETLoose accepts both standard API envelopes and raw JSON payloads.
+// Some ChatWiki endpoints may return direct arrays/objects or even "NULL".
+func (s *ChatWikiService) chatWikiGETLoose(token string, apiURL string) (json.RawMessage, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("create request: %w", err)
+	}
+	req.Header.Set("Token", token)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read response body: %w", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("unexpected status %d: %s", resp.StatusCode, string(body))
+	}
+
+	trimmed := strings.TrimSpace(string(body))
+	if trimmed == "" {
+		return json.RawMessage("[]"), nil
+	}
+
+	var apiResp struct {
+		Res  int             `json:"res"`
+		Code int             `json:"code"`
+		Msg  string          `json:"msg"`
+		Data json.RawMessage `json:"data"`
+	}
+	if err := json.Unmarshal(body, &apiResp); err == nil {
+		resultCode := apiResp.Res
+		if resultCode == 0 && apiResp.Code != 0 {
+			resultCode = apiResp.Code
+		}
+		if resultCode != 0 {
+			return nil, fmt.Errorf("API error code=%d msg=%s", resultCode, apiResp.Msg)
+		}
+		dataTrimmed := strings.TrimSpace(string(apiResp.Data))
+		if dataTrimmed == "" || strings.EqualFold(dataTrimmed, "null") {
+			return json.RawMessage("[]"), nil
+		}
+		return apiResp.Data, nil
+	}
+
+	if json.Valid([]byte(trimmed)) {
+		return json.RawMessage(trimmed), nil
+	}
+
+	// Some deployments may return plain "NULL" as empty payload.
+	if strings.EqualFold(trimmed, "NULL") {
+		return json.RawMessage("[]"), nil
+	}
+
+	if len(trimmed) > 240 {
+		trimmed = trimmed[:240] + "..."
+	}
+	return nil, fmt.Errorf("decode response: non-JSON body: %s", trimmed)
+}
+
+func decodeAPIDataObjectArray(data json.RawMessage) ([]map[string]any, error) {
+	var arr []map[string]any
+	if err := json.Unmarshal(data, &arr); err == nil {
+		return arr, nil
+	}
+
+	var obj map[string]any
+	if err := json.Unmarshal(data, &obj); err != nil {
+		return nil, fmt.Errorf("decode data: %w", err)
+	}
+	for _, key := range []string{"list", "rows", "items", "data"} {
+		raw, ok := obj[key]
+		if !ok || raw == nil {
+			continue
+		}
+		items, ok := raw.([]any)
+		if !ok {
+			continue
+		}
+		result := make([]map[string]any, 0, len(items))
+		for _, item := range items {
+			asMap, ok := item.(map[string]any)
+			if !ok {
+				continue
+			}
+			result = append(result, asMap)
+		}
+		return result, nil
+	}
+
+	return []map[string]any{}, nil
+}
+
+func decodeAPIDataObjectArrayWithTotal(data json.RawMessage) ([]map[string]any, int, bool, error) {
+	var arr []map[string]any
+	if err := json.Unmarshal(data, &arr); err == nil {
+		return arr, 0, false, nil
+	}
+
+	var obj map[string]any
+	if err := json.Unmarshal(data, &obj); err != nil {
+		return nil, 0, false, fmt.Errorf("decode data: %w", err)
+	}
+
+	items := []map[string]any{}
+	for _, key := range []string{"list", "rows", "items", "data"} {
+		raw, ok := obj[key]
+		if !ok || raw == nil {
+			continue
+		}
+		list, ok := raw.([]any)
+		if !ok {
+			continue
+		}
+		result := make([]map[string]any, 0, len(list))
+		for _, item := range list {
+			asMap, ok := item.(map[string]any)
+			if !ok {
+				continue
+			}
+			result = append(result, asMap)
+		}
+		items = result
+		break
+	}
+
+	total, hasTotal := getIntWithPresenceByKeys(obj, "total", "count", "total_count", "total_num", "records")
+	return items, total, hasTotal, nil
+}
+
+func getStringByKeys(data map[string]any, keys ...string) string {
+	for _, key := range keys {
+		raw, ok := data[key]
+		if !ok || raw == nil {
+			continue
+		}
+		switch v := raw.(type) {
+		case string:
+			if strings.TrimSpace(v) != "" {
+				return strings.TrimSpace(v)
+			}
+		case float64:
+			return strconv.FormatInt(int64(v), 10)
+		case int:
+			return strconv.Itoa(v)
+		case int64:
+			return strconv.FormatInt(v, 10)
+		case json.Number:
+			return v.String()
+		default:
+			value := strings.TrimSpace(fmt.Sprintf("%v", v))
+			if value != "" && value != "<nil>" {
+				return value
+			}
+		}
+	}
+	return ""
+}
+
+func getIntByKeys(data map[string]any, keys ...string) int {
+	for _, key := range keys {
+		raw, ok := data[key]
+		if !ok || raw == nil {
+			continue
+		}
+		switch v := raw.(type) {
+		case int:
+			return v
+		case int64:
+			return int(v)
+		case float64:
+			return int(v)
+		case string:
+			n, err := strconv.Atoi(strings.TrimSpace(v))
+			if err == nil {
+				return n
+			}
+		case json.Number:
+			n, err := v.Int64()
+			if err == nil {
+				return int(n)
+			}
+		}
+	}
+	return 0
+}
+
+func getIntWithPresenceByKeys(data map[string]any, keys ...string) (int, bool) {
+	for _, key := range keys {
+		raw, ok := data[key]
+		if !ok || raw == nil {
+			continue
+		}
+		switch v := raw.(type) {
+		case int:
+			return v, true
+		case int64:
+			return int(v), true
+		case float64:
+			return int(v), true
+		case string:
+			n, err := strconv.Atoi(strings.TrimSpace(v))
+			if err == nil {
+				return n, true
+			}
+		case json.Number:
+			n, err := v.Int64()
+			if err == nil {
+				return int(n), true
+			}
+		}
+	}
+	return 0, false
+}
+
+func getStringSliceByKeys(data map[string]any, keys ...string) []string {
+	for _, key := range keys {
+		raw, ok := data[key]
+		if !ok || raw == nil {
+			continue
+		}
+		items, ok := raw.([]any)
+		if !ok {
+			continue
+		}
+		result := make([]string, 0, len(items))
+		for _, item := range items {
+			if item == nil {
+				continue
+			}
+			if m, ok := item.(map[string]any); ok {
+				s := getStringByKeys(m, "url", "path", "src", "thumb_path", "image", "file_url")
+				if s != "" {
+					result = append(result, s)
+				}
+				continue
+			}
+			s := strings.TrimSpace(fmt.Sprintf("%v", item))
+			if s == "" || s == "<nil>" {
+				continue
+			}
+			result = append(result, s)
+		}
+		return result
+	}
+	return []string{}
 }
