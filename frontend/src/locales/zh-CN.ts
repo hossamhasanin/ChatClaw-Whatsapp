@@ -511,7 +511,7 @@ export default {
       taskAgentType: '任务类型',
       taskAgentResult: '子代理执行结果',
       subAgentResearcher: '子任务 · 信息调研',
-      subAgentWorker: '子任务 · 任务处理',
+      subAgentWorker: '子任务 · 自主执行',
       subAgentSkillAdvisor: '子任务 · 技能管理',
       subAgentRunning: '执行中',
       subAgentCompleted: '已完成',

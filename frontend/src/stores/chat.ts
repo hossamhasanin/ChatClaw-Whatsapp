@@ -48,6 +48,7 @@ export interface ToolCallInfo {
   childToolCalls?: ToolCallInfo[]
   childContent?: string
   childThinkingContent?: string
+  childSegments?: MessageSegment[]
 }
 
 // Retrieval item info for display (chat mode knowledge/memory retrieval)
@@ -510,6 +511,13 @@ export const useChatStore = defineStore('chat', () => {
         const parent = findActiveSubAgentToolCall(streaming, subAgentName)
         if (parent) {
           parent.childContent = (parent.childContent || '') + chunk
+          if (!parent.childSegments) parent.childSegments = []
+          const lastChild = parent.childSegments[parent.childSegments.length - 1]
+          if (lastChild && lastChild.type === 'content') {
+            lastChild.content += chunk
+          } else {
+            parent.childSegments.push({ type: 'content', content: chunk })
+          }
           return
         }
       }
@@ -547,6 +555,13 @@ export const useChatStore = defineStore('chat', () => {
         const parent = findActiveSubAgentToolCall(streaming, subAgentName)
         if (parent) {
           parent.childThinkingContent = (parent.childThinkingContent || '') + chunk
+          if (!parent.childSegments) parent.childSegments = []
+          const lastChild = parent.childSegments[parent.childSegments.length - 1]
+          if (lastChild && lastChild.type === 'thinking') {
+            lastChild.content += chunk
+          } else {
+            parent.childSegments.push({ type: 'thinking', content: chunk })
+          }
           return
         }
       }
@@ -622,6 +637,13 @@ export const useChatStore = defineStore('chat', () => {
         if (parent) {
           if (!parent.childToolCalls) parent.childToolCalls = []
           parent.childToolCalls.push(toolCall)
+          if (!parent.childSegments) parent.childSegments = []
+          const lastChild = parent.childSegments[parent.childSegments.length - 1]
+          if (lastChild && lastChild.type === 'tools') {
+            lastChild.toolCalls.push(toolCall)
+          } else {
+            parent.childSegments.push({ type: 'tools', toolCalls: [toolCall] })
+          }
           return
         }
       }

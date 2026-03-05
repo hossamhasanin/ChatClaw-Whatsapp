@@ -3,7 +3,7 @@ import { ref, nextTick, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ChevronDown, Wrench, Loader2, Check, X, Bot, Brain } from 'lucide-vue-next'
 import { cn } from '@/lib/utils'
-import type { ToolCallInfo } from '@/stores'
+import type { ToolCallInfo, MessageSegment } from '@/stores'
 
 const props = defineProps<{
   toolCalls: ToolCallInfo[]
@@ -259,26 +259,25 @@ const getTaskResult = (resultJson?: string): string => {
           />
         </button>
         <div v-if="isAgentExpanded(toolCall.toolCallId)" class="flex flex-col gap-1.5 px-2 pb-2">
-          <!-- Child thinking content -->
-          <div
-            v-if="toolCall.childThinkingContent"
-            class="flex items-start gap-1.5 rounded-md bg-muted/30 px-2.5 py-1.5 text-xs text-muted-foreground/80 dark:bg-zinc-800/30"
-          >
-            <Brain class="size-3 mt-0.5 shrink-0 opacity-60" />
-            <p class="min-w-0 whitespace-pre-wrap wrap-break-word line-clamp-4">{{ toolCall.childThinkingContent }}</p>
-          </div>
-          <!-- Child tool calls -->
-          <ToolCallBlock
-            v-if="toolCall.childToolCalls?.length"
-            :tool-calls="toolCall.childToolCalls"
-            :is-streaming="isStreaming"
-            nested
-          />
-          <!-- Child content output -->
-          <div
-            v-if="toolCall.childContent"
-            class="rounded-md border border-border/30 bg-background/40 px-2.5 py-2 text-xs leading-relaxed text-foreground/85 whitespace-pre-wrap wrap-break-word dark:bg-zinc-950/30"
-          >{{ toolCall.childContent }}<span v-if="toolCall.status === 'calling'" class="streaming-cursor" aria-hidden="true"></span></div>
+          <template v-for="(seg, segIdx) in toolCall.childSegments" :key="segIdx">
+            <div
+              v-if="seg.type === 'thinking' && seg.content"
+              class="flex items-start gap-1.5 rounded-md bg-muted/30 px-2.5 py-1.5 text-xs text-muted-foreground/80 dark:bg-zinc-800/30"
+            >
+              <Brain class="size-3 mt-0.5 shrink-0 opacity-60" />
+              <p class="min-w-0 whitespace-pre-wrap wrap-break-word line-clamp-4">{{ seg.content }}</p>
+            </div>
+            <ToolCallBlock
+              v-if="seg.type === 'tools' && seg.toolCalls.length"
+              :tool-calls="seg.toolCalls"
+              :is-streaming="isStreaming"
+              nested
+            />
+            <div
+              v-if="seg.type === 'content' && seg.content"
+              class="rounded-md border border-border/30 bg-background/40 px-2.5 py-2 text-xs leading-relaxed text-foreground/85 whitespace-pre-wrap wrap-break-word dark:bg-zinc-950/30"
+            >{{ seg.content }}<span v-if="toolCall.status === 'calling' && segIdx === toolCall.childSegments!.length - 1" class="streaming-cursor" aria-hidden="true"></span></div>
+          </template>
         </div>
       </template>
 
