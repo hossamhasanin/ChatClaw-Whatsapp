@@ -388,6 +388,13 @@ export default {
       deleteConfirmMessage: '确定要删除模型「{name}」吗？此操作无法撤销。',
       confirmDelete: '删除',
       deleting: '删除中...',
+      // 模型能力
+      supportedInputs: '支持的输入类型',
+      capabilityText: '文本',
+      capabilityImage: '图片',
+      capabilityAudio: '音频',
+      capabilityVideo: '视频',
+      capabilityFile: '文件',
     },
     // 关于我们
     about: {
@@ -552,6 +559,8 @@ export default {
       imageTooLarge: '图片过大',
       imagesTotalTooLarge: '图片总大小过大',
       imageReadFailed: '图片读取失败',
+      modelNotSupportVision: '当前模型不支持图片识别，请切换到支持视觉的多模态模型',
+      modelNotSupportVisionHint: '例如 GPT-4o、Claude、Gemini 等模型支持图片识别',
     },
     toasts: {
       created: '助手创建成功',

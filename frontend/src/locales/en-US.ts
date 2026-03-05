@@ -417,6 +417,13 @@ export default {
         'Are you sure you want to delete the model "{name}"? This action cannot be undone.',
       confirmDelete: 'Delete',
       deleting: 'Deleting...',
+      // Model capabilities
+      supportedInputs: 'Supported Input Types',
+      capabilityText: 'Text',
+      capabilityImage: 'Image',
+      capabilityAudio: 'Audio',
+      capabilityVideo: 'Video',
+      capabilityFile: 'File',
     },
   },
   assistant: {
@@ -555,6 +562,8 @@ export default {
       imageTooLarge: 'Image too large (max {max})',
       imagesTotalTooLarge: 'Total image size too large (max {max})',
       imageReadFailed: 'Failed to read image',
+      modelNotSupportVision: 'Current model does not support image recognition. Please switch to a multimodal vision model',
+      modelNotSupportVisionHint: 'Models like GPT-4o, Claude, Gemini support image recognition',
     },
     toasts: {
       created: 'Agent created',

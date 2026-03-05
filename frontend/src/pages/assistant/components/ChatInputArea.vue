@@ -4,7 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { toast } from '@/components/ui/toast'
-import { ArrowUp, Square, Check, Lightbulb, X, Image as ImageIcon } from 'lucide-vue-next'
+import { ArrowUp, Square, Check, Lightbulb, X, Image as ImageIcon, FileText, Mic, Video, File } from 'lucide-vue-next'
 import { onMounted, onUnmounted } from 'vue'
 import {
   Select,
@@ -133,6 +133,31 @@ function isProviderFree(pw: ProviderWithModels | undefined): boolean {
   if (!pw?.provider) return false
   const p = pw.provider as { is_free?: boolean }
   return Boolean(p.is_free)
+}
+
+// 获取选中模型的能力标签
+const selectedModelCapabilities = computed(() => {
+  if (!props.selectedModelInfo?.providerId || !props.selectedModelInfo?.modelId || !props.providersWithModels?.length) {
+    return []
+  }
+  const pw = props.providersWithModels.find((p) => p.provider?.provider_id === props.selectedModelInfo?.providerId)
+  if (!pw) return []
+  for (const group of pw.model_groups) {
+    const model = group.models.find((m) => m.model_id === props.selectedModelInfo?.modelId)
+    if (model?.capabilities) {
+      return model.capabilities
+    }
+  }
+  return []
+})
+
+// 能力图标映射
+const capabilityIcons: Record<string, any> = {
+  text: FileText,
+  image: ImageIcon,
+  audio: Mic,
+  video: Video,
+  file: File,
 }
 
 const fileInputRef = ref<HTMLInputElement | null>(null)
@@ -403,6 +428,15 @@ onUnmounted(() => {
                           >
                             {{ t('assistant.chat.freeBadge') }}
                           </span>
+                          <template v-if="!isSnapMode && selectedModelCapabilities.length > 0">
+                            <span
+                              v-for="cap in selectedModelCapabilities.slice(0, 2)"
+                              :key="cap"
+                              class="shrink-0 rounded px-1 py-0.5 text-[10px] font-medium text-muted-foreground ring-1 ring-border"
+                            >
+                              <component :is="capabilityIcons[cap]" class="size-2.5" />
+                            </span>
+                          </template>
                         </div>
                         <span v-else class="text-muted-foreground">
                           {{ t('assistant.chat.noModel') }}
@@ -428,7 +462,18 @@ onUnmounted(() => {
                                   :key="pw.provider.provider_id + '::' + m.model_id"
                                   :value="pw.provider.provider_id + '::' + m.model_id"
                                 >
-                                  {{ m.name }}
+                                  <div class="flex items-center gap-2">
+                                    <span>{{ m.name }}</span>
+                                    <template v-if="m.capabilities && m.capabilities.length > 0">
+                                      <span
+                                        v-for="cap in m.capabilities.slice(0, 3)"
+                                        :key="cap"
+                                        class="rounded px-1 py-0.5 text-[10px] text-muted-foreground"
+                                      >
+                                        <component :is="capabilityIcons[cap]" class="size-2.5" />
+                                      </span>
+                                    </template>
+                                  </div>
                                 </SelectItem>
                               </template>
                             </template>

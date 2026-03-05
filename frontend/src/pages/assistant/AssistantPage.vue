@@ -44,6 +44,7 @@ import { useAgents } from './composables/useAgents'
 import { useConversations } from './composables/useConversations'
 import { useModelSelection } from './composables/useModelSelection'
 import { useSnapMode } from './composables/useSnapMode'
+import { supportsMultimodal } from '@/composables/useMultimodal'
 
 /**
  * Props - 每个标签页实例都有自己独立的 tabId
@@ -454,6 +455,13 @@ const handleRemoveLibrary = async (id: number) => {
 
 // Handle image selection
 const handleAddImages = async (files: FileList | File[]) => {
+  // Check if current model supports multimodal (vision)
+  const modelInfo = selectedModelInfo.value
+  if (modelInfo && !supportsMultimodal(modelInfo.providerId, modelInfo.modelId)) {
+    toast.error(t('assistant.errors.modelNotSupportVision'))
+    return
+  }
+
   const fileArray = Array.from(files)
   const MAX_IMAGES = 4
   const currentCount = pendingImages.value.length
