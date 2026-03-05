@@ -137,6 +137,25 @@ const handleFolderClick = (folderId: number | -1, libraryId: number) => {
   selectedLibraryId.value = libraryId
   // -1 表示"未分组"
   selectedFolderId.value = folderId === -1 ? -1 : folderId
+
+  // 如果点击的是有下级文件夹的文件夹，自动展开下级
+  if (folderId > 0) {
+    const folders = libraryFolders.value.get(libraryId) || []
+    const findFolder = (folders: Folder[], id: number): Folder | null => {
+      for (const folder of folders) {
+        if (folder.id === id) return folder
+        if (folder.children) {
+          const found = findFolder(folder.children, id)
+          if (found) return found
+        }
+      }
+      return null
+    }
+    const folder = findFolder(folders, folderId)
+    if (folder && folder.children && folder.children.length > 0) {
+      expandedFolders.value.add(folderId)
+    }
+  }
 }
 
 const handleLibraryClick = async (libraryId: number) => {
