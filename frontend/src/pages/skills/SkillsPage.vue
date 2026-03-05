@@ -406,27 +406,26 @@ async function showMarketDetail(skill: RemoteSkill) {
   fileContent.value = ''
   detailLoading.value = true
   try {
-    const [detail, files] = await Promise.allSettled([
-      SkillsService.GetSkillDetail(skill.slug),
-      SkillsService.GetRemoteSkillFiles(skill.slug, skill.version || 'latest'),
-    ])
-    if (version !== detailLoadVersion) return
-    if (detail.status === 'fulfilled') {
-      detailMeta.value = detail.value
-    } else {
-      const msg = detail.reason?.toString() || ''
+    try {
+      detailMeta.value = await SkillsService.GetSkillDetail(skill.slug)
+    } catch (err) {
+      const msg = String(err ?? '')
       if (msg.includes('429') || msg.toLowerCase().includes('rate')) {
         toast.error(t('settings.skills.rateLimited'))
       }
     }
-    if (files.status === 'fulfilled') {
-      detailFiles.value = files.value
-      if (files.value.length > 0) {
-        const skillMd = files.value.find((f) => f.path === 'SKILL.md')
-        await selectFile(skillMd ? skillMd.path : files.value[0].path)
+    if (version !== detailLoadVersion) return
+
+    try {
+      const files = await SkillsService.GetRemoteSkillFiles(skill.slug, skill.version || 'latest')
+      if (version !== detailLoadVersion) return
+      detailFiles.value = files
+      if (files.length > 0) {
+        const skillMd = files.find((f) => f.path === 'SKILL.md')
+        await selectFile(skillMd ? skillMd.path : files[0].path)
       }
-    } else {
-      const msg = files.reason?.toString() || ''
+    } catch (err) {
+      const msg = String(err ?? '')
       if (msg.includes('429') || msg.toLowerCase().includes('rate')) {
         toast.error(t('settings.skills.rateLimited'))
       }

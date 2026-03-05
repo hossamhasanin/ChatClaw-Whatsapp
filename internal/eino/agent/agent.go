@@ -165,7 +165,7 @@ func NewChatModelAgent(ctx context.Context, config Config, toolRegistry *tools.T
 		Handlers:     handlers,
 		SubAgents:    subAgents,
 	}
-
+	
 	agent, err := deep.New(ctx, deepCfg)
 	if err != nil {
 		browserTool.Close()
@@ -407,14 +407,15 @@ type namedAgent struct {
 }
 
 func (a *namedAgent) Name(_ context.Context) string        { return a.name }
-func (a *namedAgent) Description(_ context.Context) string  { return a.desc }
+func (a *namedAgent) Description(_ context.Context) string { return a.desc }
 
 // buildPlanExecuteSubAgent creates a Plan-Execute agent that can be registered
 // as a DeepAgent SubAgent. The main agent delegates complex multi-step tasks
 // to this agent via the built-in TaskTool.
 //
 // Architecture: Planner (generate plan) → Executor (execute steps with tools)
-//               → Replanner (evaluate progress, replan or finish)
+//
+//	→ Replanner (evaluate progress, replan or finish)
 //
 // The Executor is built manually (instead of using planexecute.NewExecutor) so
 // that the same Handlers as the main agent (Skill, Reduction, etc.) are applied.
