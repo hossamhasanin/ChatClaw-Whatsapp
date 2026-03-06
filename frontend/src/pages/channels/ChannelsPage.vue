@@ -647,6 +647,7 @@ onMounted(loadData)
     <BindAgentDialog
       v-model:open="bindDialogOpen"
       :from-create="bindFromCreate"
+      :current-agent-id="channelToBind?.agent_id ?? null"
       @bind="handleBindAgent"
       @auto-generate="handleAutoGenerate"
     />

@@ -18,6 +18,8 @@ import { getLogoDataUrl } from '@/composables/useLogo'
 const props = defineProps<{
   /** When true (e.g. opened right after creating a channel), show "auto-generate assistant" option at top */
   fromCreate?: boolean
+  /** Currently bound agent id for the channel being edited */
+  currentAgentId?: number | null
 }>()
 
 const open = defineModel<boolean>('open', { required: true })
@@ -34,8 +36,10 @@ const localSelected = ref<number | 'auto' | null>(null)
 
 watch(open, async (val) => {
   if (val) {
-    localSelected.value = null
     await loadAgents()
+    localSelected.value = props.currentAgentId && props.currentAgentId > 0
+      ? props.currentAgentId
+      : null
   }
 })
 
