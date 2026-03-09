@@ -13,6 +13,7 @@ import { getErrorMessage } from '@/composables/useErrorMessage'
 import { Dialogs } from '@wailsio/runtime'
 import {
   AlertDialog,
+  AlertDialogAction,
   AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
@@ -685,7 +686,7 @@ onMounted(loadData)
         <AlertDialogFooter>
           <AlertDialogCancel>{{ t('common.cancel') }}</AlertDialogCancel>
           <AlertDialogAction
-            class="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            class="bg-foreground text-background hover:bg-foreground/90"
             @click="handleDelete"
           >
             {{ t('common.delete') }}
