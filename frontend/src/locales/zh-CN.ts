@@ -641,6 +641,9 @@ export default {
       openFolder: '在文件管理器中打开',
       depthLimitHint: '当前仅展示前 {depth} 层目录',
       noFiles: '暂无产出文件',
+      noConversationDir: '默认工作目录',
+      noConversationAction: '点击修改',
+      configureWorkspace: '配置工作区',
     },
   },
   knowledge: {

@@ -644,6 +644,9 @@ export default {
       openFolder: 'Open in file manager',
       depthLimitHint: 'Showing only the first {depth} directory levels',
       noFiles: 'No output files yet',
+      noConversationDir: 'Default workspace',
+      noConversationAction: 'Click to change',
+      configureWorkspace: 'Configure workspace',
     },
   },
   knowledge: {
