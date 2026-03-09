@@ -441,7 +441,7 @@ func (s *ToolchainService) fetchOSSDownloadURL(tool, version, goos, goarch strin
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	// API 请求体
+	// API 请求体（与 OpenAPI 格式一致）
 	type Request struct {
 		Tool    string `json:"tool"`
 		Version string `json:"version"`
@@ -465,7 +465,9 @@ func (s *ToolchainService) fetchOSSDownloadURL(tool, version, goos, goarch strin
 		return "", err
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, define.OSSDownloadAPI, bytes.NewReader(bodyBytes))
+	// 使用 ServerURL + /toolDownload（符合 /openapi 前缀约定）
+	apiURL := define.ServerURL + "/toolDownload"
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, apiURL, bytes.NewReader(bodyBytes))
 	if err != nil {
 		return "", err
 	}
