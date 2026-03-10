@@ -13,6 +13,7 @@ import (
 	einoagent "chatclaw/internal/eino/agent"
 	"chatclaw/internal/eino/tools"
 	feishutools "chatclaw/internal/eino/tools/im/feishu"
+	wecomtools "chatclaw/internal/eino/tools/im/wecom"
 	"chatclaw/internal/define"
 	"chatclaw/internal/services/memory"
 	"chatclaw/internal/services/skills"
@@ -349,8 +350,10 @@ func (s *ChatService) buildExtras(ctx context.Context, gc *generationContext) ([
 	}
 
 	if s.gateway != nil {
+		chID, tgtID, hasChannelSource := s.resolveChannelSource(ctx, gc.db, gc.conversationID)
+
 		feishuCfg := &feishutools.FeishuSenderConfig{Gateway: s.gateway}
-		if chID, tgtID, ok := s.resolveChannelSource(ctx, gc.db, gc.conversationID); ok {
+		if hasChannelSource {
 			feishuCfg.DefaultChannelID = chID
 			feishuCfg.DefaultTargetID = tgtID
 		}
@@ -360,6 +363,19 @@ func (s *ChatService) buildExtras(ctx context.Context, gc *generationContext) ([
 		} else {
 			extraTools = append(extraTools, feishuTool)
 			s.app.Logger.Info("[chat] feishu_sender tool added", "default_channel", feishuCfg.DefaultChannelID, "default_target", feishuCfg.DefaultTargetID)
+		}
+
+		wecomCfg := &wecomtools.WeComSenderConfig{Gateway: s.gateway}
+		if hasChannelSource {
+			wecomCfg.DefaultChannelID = chID
+			wecomCfg.DefaultTargetID = tgtID
+		}
+		wecomTool, toolErr := wecomtools.NewWeComSenderTool(wecomCfg)
+		if toolErr != nil {
+			s.app.Logger.Warn("[chat] failed to create wecom_sender tool", "error", toolErr)
+		} else {
+			extraTools = append(extraTools, wecomTool)
+			s.app.Logger.Info("[chat] wecom_sender tool added", "default_channel", wecomCfg.DefaultChannelID, "default_target", wecomCfg.DefaultTargetID)
 		}
 	}
 
