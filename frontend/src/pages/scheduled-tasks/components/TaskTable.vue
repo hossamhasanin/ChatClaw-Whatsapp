@@ -132,7 +132,7 @@ const hasTasks = computed(() => props.tasks.length > 0)
             </td>
             <td class="px-4 py-3 text-muted-foreground">{{ formatTaskTime(task.next_run_at) }}</td>
             <td class="px-4 py-3">
-              <div class="flex min-w-[180px] items-center justify-between gap-3">
+              <div class="flex items-center gap-3 whitespace-nowrap">
                 <TaskRunStatusBadge
                   :status="displayTaskStatus(task)"
                   :label="displayTaskStatusLabel(task)"
