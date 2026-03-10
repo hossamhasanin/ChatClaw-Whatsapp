@@ -30,7 +30,7 @@ import {
 
 const { t } = useI18n()
 
-const CHATWIKI_CLOUD_AUTH_URL = 'https://dev6zhimachatai.applnk.cn/'
+const CHATWIKI_CLOUD_AUTH_URL = 'http://dev6zhimachatai.applnk.cn/'
 const BINDING_TIMEOUT_SEC = 120
 
 type View = 'list' | 'choose' | 'binding' | 'success' | 'failure'
