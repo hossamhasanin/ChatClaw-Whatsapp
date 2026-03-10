@@ -61,13 +61,13 @@ async function selectRun(run: ScheduledTaskRun) {
 
 <template>
   <Dialog :open="open" @update:open="(value) => emit('update:open', value)">
-    <DialogContent class="max-h-[90vh] overflow-hidden sm:max-w-6xl">
+    <DialogContent class="max-h-[90vh] overflow-hidden sm:max-w-[1400px]">
       <DialogHeader>
         <DialogTitle>{{ task?.name }} / 运行记录</DialogTitle>
       </DialogHeader>
 
       <div class="flex h-[70vh] min-h-0 gap-4">
-        <div class="w-80 shrink-0 overflow-auto rounded-lg border border-border">
+        <div class="shrink-0 overflow-auto rounded-lg border border-border sm:w-[150px]">
           <div v-if="loading" class="p-4 text-sm text-muted-foreground">加载中...</div>
           <div v-else-if="runs.length === 0" class="p-4 text-sm text-muted-foreground">
             暂无运行记录

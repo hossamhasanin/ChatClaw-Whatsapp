@@ -30,6 +30,59 @@ func TestParseSchedule(t *testing.T) {
 		}
 	})
 
+	t.Run("preset every 5 minutes", func(t *testing.T) {
+		schedule, err := parseSchedule(ScheduleTypePreset, "every_5_minutes", "", now)
+		if err != nil {
+			t.Fatalf("parseSchedule returned error: %v", err)
+		}
+		if schedule.CronExpr != "*/5 * * * *" {
+			t.Fatalf("unexpected cron expr: %s", schedule.CronExpr)
+		}
+		if schedule.NextRunAt == nil || schedule.NextRunAt.Format(time.RFC3339) != "2026-03-09T08:35:00+08:00" {
+			t.Fatalf("unexpected next run: %v", schedule.NextRunAt)
+		}
+	})
+
+	t.Run("preset every minute", func(t *testing.T) {
+		schedule, err := parseSchedule(ScheduleTypePreset, "every_minute", "", now)
+		if err != nil {
+			t.Fatalf("parseSchedule returned error: %v", err)
+		}
+		if schedule.CronExpr != "* * * * *" {
+			t.Fatalf("unexpected cron expr: %s", schedule.CronExpr)
+		}
+	})
+
+	t.Run("preset every 15 minutes", func(t *testing.T) {
+		schedule, err := parseSchedule(ScheduleTypePreset, "every_15_minutes", "", now)
+		if err != nil {
+			t.Fatalf("parseSchedule returned error: %v", err)
+		}
+		if schedule.CronExpr != "*/15 * * * *" {
+			t.Fatalf("unexpected cron expr: %s", schedule.CronExpr)
+		}
+	})
+
+	t.Run("preset every day 6pm", func(t *testing.T) {
+		schedule, err := parseSchedule(ScheduleTypePreset, "every_day_1800", "", now)
+		if err != nil {
+			t.Fatalf("parseSchedule returned error: %v", err)
+		}
+		if schedule.CronExpr != "0 18 * * *" {
+			t.Fatalf("unexpected cron expr: %s", schedule.CronExpr)
+		}
+	})
+
+	t.Run("preset first day of month 9am", func(t *testing.T) {
+		schedule, err := parseSchedule(ScheduleTypePreset, "every_month_1_0900", "", now)
+		if err != nil {
+			t.Fatalf("parseSchedule returned error: %v", err)
+		}
+		if schedule.CronExpr != "0 9 1 * *" {
+			t.Fatalf("unexpected cron expr: %s", schedule.CronExpr)
+		}
+	})
+
 	t.Run("custom weekdays", func(t *testing.T) {
 		schedule, err := parseSchedule(ScheduleTypeCustom, `{"minute":15,"hour":10,"weekdays":[1,3,5]}`, "", now)
 		if err != nil {

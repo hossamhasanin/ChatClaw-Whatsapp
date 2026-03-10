@@ -111,7 +111,7 @@ func buildToolsPrompt(workDir string, sandboxEnabled, sandboxNetworkEnabled bool
 - **运行 shell 脚本时用 "sh script.sh"（或 "bash script.sh" / "zsh script.sh"）**，不要用 "./script.sh"（沙箱中文件没有执行权限），也不要尝试 chmod。
 - 如果命令因权限被拒绝而失败，可能是在尝试写入工作目录之外的路径。请使用本地/项目范围的替代方案重试。
 `, workDir, networkDesc)
-	} else {
+		} else {
 			networkDesc := "Network access is **disabled** for executed commands. Commands like curl, npm install, pip install will fail."
 			if sandboxNetworkEnabled {
 				networkDesc = "Network access is **enabled** for executed commands (e.g. npm install, curl, pip install will work)."
@@ -411,19 +411,29 @@ func buildScheduledTaskPrompt() string {
 **重要：` + "`preset`" + ` 类型只支持以下固定预设值，其他时间必须使用 ` + "`cron`" + ` 类型并生成标准 cron 表达式。**
 
 ### 支持的 preset 预设值（仅限以下值）
+- ` + "`every_minute`" + `: 每分钟执行
+- ` + "`every_5_minutes`" + `: 每 5 分钟执行
+- ` + "`every_15_minutes`" + `: 每 15 分钟执行
 - ` + "`every_hour`" + `: 每小时整点执行
 - ` + "`every_day_0900`" + `: 每天早上 9:00 执行
+- ` + "`every_day_1800`" + `: 每天下午 6:00 执行
 - ` + "`weekdays_0900`" + `: 每个工作日（周一至周五）早上 9:00 执行
 - ` + "`every_monday_0900`" + `: 每周一早上 9:00 执行
+- ` + "`every_month_1_0900`" + `: 每月 1 号早上 9:00 执行
 
 ### 时间转换示例
 
 | 用户表达 | schedule_type | schedule_value | cron_expr |
 |---------|--------------|----------------|-----------|
+| 每分钟 | preset | every_minute | |
+| 每5分钟 | preset | every_5_minutes | |
+| 每15分钟 | preset | every_15_minutes | |
 | 每小时整点 | preset | every_hour | |
 | 每天早上9点 | preset | every_day_0900 | |
+| 每天下午6点 | preset | every_day_1800 | |
 | 每个工作日9点 | preset | weekdays_0900 | |
 | 每周一早上9点 | preset | every_monday_0900 | |
+| 每月1号早上9点 | preset | every_month_1_0900 | |
 | 每天15:20 | cron | | 20 15 * * * |
 | 每天下午3点半 | cron | | 30 15 * * * |
 | 每周一上午10点 | cron | | 0 10 * * 1 |
@@ -504,19 +514,29 @@ You can help users manage scheduled tasks. When users mention "scheduled tasks",
 **Important: ` + "`preset`" + ` type only supports the following fixed preset values. For other times, you MUST use ` + "`cron`" + ` type and generate a standard cron expression.**
 
 ### Supported Preset Values (Only These)
+- ` + "`every_minute`" + `: Execute every minute
+- ` + "`every_5_minutes`" + `: Execute every 5 minutes
+- ` + "`every_15_minutes`" + `: Execute every 15 minutes
 - ` + "`every_hour`" + `: Execute at the start of every hour
 - ` + "`every_day_0900`" + `: Execute at 9:00 AM every day
+- ` + "`every_day_1800`" + `: Execute at 6:00 PM every day
 - ` + "`weekdays_0900`" + `: Execute at 9:00 AM on weekdays (Mon-Fri)
 - ` + "`every_monday_0900`" + `: Execute at 9:00 AM every Monday
+- ` + "`every_month_1_0900`" + `: Execute at 9:00 AM on the 1st day of every month
 
 ### Time Conversion Examples
 
 | User Expression | schedule_type | schedule_value | cron_expr |
 |----------------|--------------|----------------|-----------|
+| Every minute | preset | every_minute | |
+| Every 5 minutes | preset | every_5_minutes | |
+| Every 15 minutes | preset | every_15_minutes | |
 | Every hour on the hour | preset | every_hour | |
 | Every day at 9am | preset | every_day_0900 | |
+| Every day at 6pm | preset | every_day_1800 | |
 | Every weekday at 9am | preset | weekdays_0900 | |
 | Every Monday at 9am | preset | every_monday_0900 | |
+| Every month on day 1 at 9am | preset | every_month_1_0900 | |
 | Every day at 15:20 | cron | | 20 15 * * * |
 | Every day at 3:30pm | cron | | 30 15 * * * |
 | Every Monday at 10am | cron | | 0 10 * * 1 |

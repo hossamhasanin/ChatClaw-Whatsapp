@@ -38,14 +38,24 @@ func parseSchedule(scheduleType, scheduleValue, cronExpr string, now time.Time) 
 
 func parsePresetSchedule(scheduleValue string, now time.Time) (scheduleDefinition, error) {
 	switch strings.TrimSpace(scheduleValue) {
+	case "every_minute":
+		return buildScheduleDefinition(ScheduleTypePreset, scheduleValue, "* * * * *", now)
+	case "every_5_minutes":
+		return buildScheduleDefinition(ScheduleTypePreset, scheduleValue, "*/5 * * * *", now)
+	case "every_15_minutes":
+		return buildScheduleDefinition(ScheduleTypePreset, scheduleValue, "*/15 * * * *", now)
 	case "every_hour":
 		return buildScheduleDefinition(ScheduleTypePreset, scheduleValue, "0 * * * *", now)
 	case "every_day_0900":
 		return buildScheduleDefinition(ScheduleTypePreset, scheduleValue, "0 9 * * *", now)
+	case "every_day_1800":
+		return buildScheduleDefinition(ScheduleTypePreset, scheduleValue, "0 18 * * *", now)
 	case "weekdays_0900":
 		return buildScheduleDefinition(ScheduleTypePreset, scheduleValue, "0 9 * * 1-5", now)
 	case "every_monday_0900":
 		return buildScheduleDefinition(ScheduleTypePreset, scheduleValue, "0 9 * * 1", now)
+	case "every_month_1_0900":
+		return buildScheduleDefinition(ScheduleTypePreset, scheduleValue, "0 9 1 * *", now)
 	default:
 		return scheduleDefinition{}, fmt.Errorf("unsupported preset schedule: %s", scheduleValue)
 	}

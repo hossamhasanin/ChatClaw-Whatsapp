@@ -9,10 +9,15 @@ import type { Agent } from '@bindings/chatclaw/internal/services/agents'
 export type { ScheduledTask, ScheduledTaskRun, ScheduledTaskRunDetail, ScheduledTaskSummary, Agent }
 
 export type SchedulePresetValue =
+  | 'every_minute'
+  | 'every_5_minutes'
+  | 'every_15_minutes'
   | 'every_hour'
   | 'every_day_0900'
+  | 'every_day_1800'
   | 'weekdays_0900'
   | 'every_monday_0900'
+  | 'every_month_1_0900'
 
 export type ScheduleCustomMode = 'daily' | 'weekly' | 'monthly'
 

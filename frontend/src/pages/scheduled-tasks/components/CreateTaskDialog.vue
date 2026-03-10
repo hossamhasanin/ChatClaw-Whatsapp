@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { ChevronDown } from 'lucide-vue-next'
+import { Check, ChevronDown, Clock3 } from 'lucide-vue-next'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
@@ -27,15 +27,58 @@ const scheduleTypeOptions = [
 ] as const
 
 const customModeOptions = [
-  { value: 'daily', label: '每天' },
-  { value: 'weekly', label: '每周' },
-  { value: 'monthly', label: '每月' },
+  { value: 'daily', label: '每天执行' },
+  { value: 'weekly', label: '每周执行' },
+  { value: 'monthly', label: '每月执行' },
 ] as const
 
 const dialogSubtitle = computed(() => (props.form.id ? '更新自动化的 AI 任务' : '安排自动化的 AI 任务'))
+const monthlyOptions = Array.from({ length: 31 }, (_, index) => index + 1)
+
+const customTimeValue = computed({
+  get() {
+    return `${String(props.form.customHour).padStart(2, '0')}:${String(props.form.customMinute).padStart(2, '0')}`
+  },
+  set(value: string) {
+    const [hour, minute] = value.split(':')
+    props.form.customHour = Number(hour || 0)
+    props.form.customMinute = Number(minute || 0)
+  },
+})
+
+const selectedWeeklyDay = computed({
+  get() {
+    return props.form.customWeekdays[0] ?? 1
+  },
+  set(value: number) {
+    props.form.customWeekdays = [value]
+  },
+})
 
 function closeDialog() {
   emit('update:open', false)
+}
+
+function selectScheduleType(value: ScheduledTaskFormState['scheduleType']) {
+  props.form.scheduleType = value
+  if (value === 'custom' && props.form.customMode === 'weekly' && props.form.customWeekdays.length === 0) {
+    props.form.customWeekdays = [1]
+  }
+}
+
+function selectCustomMode(value: ScheduledTaskFormState['customMode']) {
+  props.form.customMode = value
+  if (value === 'weekly') {
+    selectedWeeklyDay.value = props.form.customWeekdays[0] ?? 1
+  }
+}
+
+function selectWeeklyDay(value: number) {
+  selectedWeeklyDay.value = value
+}
+
+function selectMonthlyDay(value: number) {
+  props.form.customDayOfMonth = value
 }
 </script>
 
@@ -106,7 +149,7 @@ function closeDialog() {
                   ? 'border-[#2563eb] bg-[#eff6ff] text-[#2563eb]'
                   : 'border-[#dbe3ec] bg-white text-[#64748b] hover:border-[#cbd5e1] hover:text-[#0f172a]'
               "
-              @click="form.scheduleType = option.value"
+              @click="selectScheduleType(option.value)"
             >
               {{ option.label }}
             </button>
@@ -115,85 +158,97 @@ function closeDialog() {
           <div class="rounded-2xl border border-[#e5e7eb] bg-[#f8fafc] p-4">
             <div v-if="form.scheduleType === 'preset'" class="space-y-2">
               <label class="block text-sm font-semibold text-[#334155]">快捷设置</label>
-              <div class="relative">
-                <select
-                  v-model="form.schedulePreset"
-                  class="h-11 w-full appearance-none rounded-xl border border-[#dbe3ec] bg-white px-4 pr-11 text-sm text-[#111827] outline-none transition-[border-color,box-shadow] focus:border-[#2563eb] focus:ring-4 focus:ring-[#dbeafe]"
+              <div class="grid gap-3 md:grid-cols-2">
+                <button
+                  v-for="item in SCHEDULE_PRESETS"
+                  :key="item.value"
+                  type="button"
+                  class="flex min-h-11 items-center gap-3 rounded-xl border bg-white px-4 py-3 text-left text-sm transition-all"
+                  :class="
+                    form.schedulePreset === item.value
+                      ? 'border-[#2563eb] bg-[#eff6ff] text-[#1d4ed8] shadow-[0_0_0_1px_rgba(37,99,235,0.08)]'
+                      : 'border-[#dbe3ec] text-[#334155] hover:border-[#cbd5e1] hover:bg-[#f8fafc]'
+                  "
+                  @click="form.schedulePreset = item.value"
                 >
-                  <option v-for="item in SCHEDULE_PRESETS" :key="item.value" :value="item.value">{{ item.label }}</option>
-                </select>
-                <ChevronDown class="pointer-events-none absolute right-4 top-1/2 size-4 -translate-y-1/2 text-[#94a3b8]" />
+                  <Clock3 class="size-4 shrink-0" />
+                  <span class="flex-1 font-medium">{{ item.label }}</span>
+                  <Check v-if="form.schedulePreset === item.value" class="size-4 shrink-0" />
+                </button>
               </div>
             </div>
 
             <div v-else-if="form.scheduleType === 'custom'" class="space-y-4">
-              <div class="space-y-2">
-                <label class="block text-sm font-semibold text-[#334155]">频率</label>
-                <div class="flex flex-wrap gap-2">
+              <div class="inline-flex overflow-hidden rounded-2xl border border-[#dbe3ec] bg-white">
+                <div class="w-[140px] shrink-0">
                   <button
                     v-for="item in customModeOptions"
                     :key="item.value"
                     type="button"
-                    class="inline-flex h-10 items-center rounded-xl border px-4 text-sm font-medium transition-colors"
+                    class="flex h-12 w-full items-center justify-between px-4 text-sm font-medium transition-colors"
                     :class="
                       form.customMode === item.value
-                        ? 'border-[#0f172a] bg-[#0f172a] text-white'
-                        : 'border-[#dbe3ec] bg-white text-[#64748b] hover:border-[#cbd5e1] hover:text-[#0f172a]'
+                        ? 'bg-[#f3f4f6] text-[#111827]'
+                        : 'text-[#475569] hover:bg-[#f8fafc] hover:text-[#111827]'
                     "
-                    @click="form.customMode = item.value"
+                    @click="selectCustomMode(item.value)"
                   >
-                    {{ item.label }}
+                    <span>{{ item.label }}</span>
+                    <ChevronDown
+                      v-if="item.value !== 'daily'"
+                      class="size-4 shrink-0 rotate-[-90deg] text-[#94a3b8]"
+                      :class="form.customMode === item.value ? 'opacity-100' : 'opacity-40'"
+                    />
+                  </button>
+                </div>
+
+                <div
+                  v-if="form.customMode === 'weekly'"
+                  class="w-[140px] shrink-0 overflow-y-auto border-l border-[#dbe3ec]"
+                >
+                  <button
+                    v-for="item in WEEKDAY_OPTIONS"
+                    :key="item.value"
+                    type="button"
+                    class="flex h-12 w-full items-center justify-between px-4 text-sm transition-colors"
+                    :class="
+                      selectedWeeklyDay === item.value
+                        ? 'bg-[#f3f4f6] font-medium text-[#111827]'
+                        : 'text-[#475569] hover:bg-[#f8fafc] hover:text-[#111827]'
+                    "
+                    @click="selectWeeklyDay(item.value)"
+                  >
+                    <span>{{ item.label }}</span>
+                    <Check v-if="selectedWeeklyDay === item.value" class="size-4 shrink-0 text-[#2563eb]" />
+                  </button>
+                </div>
+
+                <div
+                  v-else-if="form.customMode === 'monthly'"
+                  class="w-[140px] shrink-0 overflow-y-auto border-l border-[#dbe3ec]"
+                >
+                  <button
+                    v-for="day in monthlyOptions"
+                    :key="day"
+                    type="button"
+                    class="flex h-12 w-full items-center px-4 text-sm transition-colors"
+                    :class="
+                      form.customDayOfMonth === day
+                        ? 'bg-[#f3f4f6] font-medium text-[#111827]'
+                        : 'text-[#475569] hover:bg-[#f8fafc] hover:text-[#111827]'
+                    "
+                    @click="selectMonthlyDay(day)"
+                  >
+                    {{ day }}号
                   </button>
                 </div>
               </div>
 
-              <div class="grid gap-4 md:grid-cols-2">
-                <div class="space-y-2">
-                  <label class="block text-sm font-semibold text-[#334155]">小时</label>
-                  <Input
-                    v-model.number="form.customHour"
-                    type="number"
-                    min="0"
-                    max="23"
-                    class="h-11 rounded-xl border-[#dbe3ec] bg-white px-4"
-                  />
-                </div>
-                <div class="space-y-2">
-                  <label class="block text-sm font-semibold text-[#334155]">分钟</label>
-                  <Input
-                    v-model.number="form.customMinute"
-                    type="number"
-                    min="0"
-                    max="59"
-                    class="h-11 rounded-xl border-[#dbe3ec] bg-white px-4"
-                  />
-                </div>
-              </div>
-
-              <div v-if="form.customMode === 'weekly'" class="space-y-2">
-                <label class="block text-sm font-semibold text-[#334155]">星期</label>
-                <div class="flex flex-wrap gap-2">
-                  <label
-                    v-for="item in WEEKDAY_OPTIONS"
-                    :key="item.value"
-                    class="inline-flex items-center gap-2 rounded-xl border border-[#dbe3ec] bg-white px-4 py-2 text-sm text-[#475569]"
-                  >
-                    <input v-model="form.customWeekdays" type="checkbox" :value="item.value" class="size-4 accent-[#2563eb]" />
-                    <span>{{ item.label }}</span>
-                  </label>
-                </div>
-              </div>
-
-              <div v-if="form.customMode === 'monthly'" class="space-y-2">
-                <label class="block text-sm font-semibold text-[#334155]">每月日期</label>
-                <Input
-                  v-model.number="form.customDayOfMonth"
-                  type="number"
-                  min="1"
-                  max="31"
-                  class="h-11 rounded-xl border-[#dbe3ec] bg-white px-4"
-                />
-              </div>
+              <Input
+                v-model="customTimeValue"
+                type="time"
+                class="h-11 w-[156px] rounded-xl border-[#dbe3ec] bg-white px-4 text-sm"
+              />
             </div>
 
             <div v-else class="space-y-2">

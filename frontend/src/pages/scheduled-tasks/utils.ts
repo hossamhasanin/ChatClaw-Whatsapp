@@ -1,5 +1,5 @@
 import { formatUtcDateTime } from '@/composables/useDateTime'
-import { SCHEDULE_PRESETS, WEEKDAY_OPTIONS } from './constants'
+import { SCHEDULE_PRESET_LABELS, WEEKDAY_OPTIONS } from './constants'
 import type { ScheduledTask, ScheduledTaskFormState } from './types'
 
 export function formatTaskTime(value?: string | Date | null) {
@@ -16,7 +16,7 @@ export function formatDuration(ms: number) {
 
 export function describeSchedule(task: Pick<ScheduledTask, 'schedule_type' | 'schedule_value' | 'cron_expr'>) {
   if (task.schedule_type === 'preset') {
-    return SCHEDULE_PRESETS.find((item) => item.value === task.schedule_value)?.label || task.schedule_value
+    return SCHEDULE_PRESET_LABELS[task.schedule_value as keyof typeof SCHEDULE_PRESET_LABELS] || task.schedule_value
   }
   if (task.schedule_type === 'custom') {
     try {
@@ -29,11 +29,11 @@ export function describeSchedule(task: Pick<ScheduledTask, 'schedule_type' | 'sc
       const hh = String(parsed.hour).padStart(2, '0')
       const mm = String(parsed.minute).padStart(2, '0')
       if (parsed.day_of_month) {
-        return `每月 ${parsed.day_of_month} 日 ${hh}:${mm}`
+        return `每月 ${parsed.day_of_month} 号 ${hh}:${mm}`
       }
       if (parsed.weekdays?.length) {
         const labels = parsed.weekdays
-          .map((value) => WEEKDAY_OPTIONS.find((item) => item.value === value)?.label || String(value))
+          .map((value) => WEEKDAY_OPTIONS.find((item) => item.value === value)?.shortLabel || String(value))
           .join(' ')
         return `每周 ${labels} ${hh}:${mm}`
       }
