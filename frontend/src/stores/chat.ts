@@ -480,7 +480,7 @@ export const useChatStore = defineStore('chat', () => {
     } as any)
   }
 
-  const SUB_AGENT_NAMES = new Set(['researcher', 'worker', 'skill_advisor'])
+  const SUB_AGENT_NAMES = new Set(['general_purpose', 'bash'])
 
   const extractSubAgentName = (runPath?: string[]): string | undefined => {
     if (!Array.isArray(runPath) || runPath.length < 2) return undefined

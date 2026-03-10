@@ -13,7 +13,7 @@ const props = defineProps<{
 
 const { t } = useI18n()
 
-const SUB_AGENT_TOOLS = new Set(['researcher', 'worker', 'skill_advisor'])
+const SUB_AGENT_TOOLS = new Set(['general_purpose', 'bash'])
 const isSubAgentTool = (toolName: string) => SUB_AGENT_TOOLS.has(toolName)
 
 const expandedCalls = ref<Set<string>>(new Set())
@@ -86,9 +86,8 @@ const getToolDisplayName = (toolName: string) => {
     skill: t('tools.skill.name'),
     write_todos: t('tools.writeTodos.name'),
     task: t('tools.task.name'),
-    researcher: t('assistant.chat.subAgentResearcher'),
-    worker: t('assistant.chat.subAgentWorker'),
-    skill_advisor: t('assistant.chat.subAgentSkillAdvisor'),
+    general_purpose: t('assistant.chat.subAgentGeneralPurpose'),
+    bash: t('assistant.chat.subAgentBash'),
   }
   return nameMap[toolName] ?? toolName
 }

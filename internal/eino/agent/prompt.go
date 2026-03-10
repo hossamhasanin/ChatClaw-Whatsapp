@@ -279,84 +279,98 @@ The following tools are **pre-installed and already on PATH** (in %s). You can c
 	return prompt
 }
 
-// buildSubAgentPrompt generates guidance for when and how to use the sub-agents.
+// buildSubAgentPrompt generates orchestration guidance for the lead agent.
+// Since the lead agent only has read-only tools, delegation is architecturally enforced.
 func buildSubAgentPrompt() string {
 	if isZhCN() {
 		return `
 # 任务委派
 
-你有三个专业助手可以委派任务。**优先委派，而非自己做。**
+你是任务编排者。你只有只读工具（read_file、ls），所有执行类操作必须通过子代理完成。
 
-## 何时必须委派
-满足以下**任一**条件时，**必须**委派给对应的子代理：
-- 需要搜索网络信息或调研 → 调用 researcher
-- 需要写文件、创建项目、运行脚本、执行命令 → 调用 worker
-- 需要安装或查找技能 → 调用 skill_advisor
+## 可用子代理
 
-## 何时自己做
-仅当任务是**纯文本对话**（回答问题、翻译、解释概念）时才自己做，不调用子代理。
+### general_purpose（执行代理）
+适用于：调研、搜索、写代码、文件操作、分析、多步执行 — 任何非琐碎任务。
+- 拥有完整工具集：web_search、write_file、edit_file、execute、glob、grep 等
+- 给它完整的任务描述（包含背景、目标、工作目录路径），因为它看不到你的对话历史
 
-## researcher
-调研类任务。它会搜索网络、浏览网页，返回精炼的结论。
-给它完整的任务描述，因为它看不到你的对话历史。
+### bash（终端代理）
+仅适用于：纯 bash 命令序列（git、npm、docker、构建/测试/部署）。
+- 只有 execute、ls、read_file、write_file、edit_file
+- **没有搜索、没有 web_search、没有 glob/grep**
 
-## worker
-执行类任务。它拥有所有工具（文件读写、命令执行、浏览器等），在独立上下文中自主完成任务。
-给它清晰的任务描述，包含工作目录路径和预期输出。
+## 选择规则（严格遵守）
+- 需要搜索/调研 → general_purpose（bash 没有搜索能力）
+- 需要写代码/编辑文件 → general_purpose
+- 只需要运行命令 → bash
+- 不确定时 → general_purpose（它能做 bash 能做的一切）
 
-## skill_advisor
-技能类任务。它会搜索技能市场、安装技能、分析内容，返回执行指南。
+## 你自己可以做的
+- **纯文本对话**：回答问题、翻译、解释概念
+- **读文件**：用 read_file 快速查看文件内容
+- **看目录**：用 ls 查看目录结构
 
-## 委派要点
-- 多个独立任务可以同时委派给多个子代理
-- 子代理返回的结论和指南可以根据实际情况调整
+## 编排规则
+1. **有依赖关系的任务必须串行**：先调用第一个子代理，等它返回结果后，再调用下一个。绝不能把有前后依赖的任务同时并行发出。
+   - 例：用户说"先调研X，然后根据调研结果写文章" → 先委派调研，拿到结果后再委派写作
+   - 例：用户说"创建4个子agent，一个选题、一个写作、一个生图、一个审核" → 这是流水线，必须串行：选题→写作→生图→审核
+2. **无依赖的任务可以并行**：多个完全独立的子任务可同时委派多个 general_purpose
+   - 例：用户说"同时调研A和B" → 可以并行两个 general_purpose
+3. **综合结果**：子代理返回后，综合结果再回复用户。如果后续还有任务，把前一步结果作为上下文传给下一个子代理
 `
 	}
 	return `
 # Task Delegation
 
-You have three specialist assistants to delegate tasks to. **Prefer delegating over doing it yourself.**
+You are a task orchestrator. You only have read-only tools (read_file, ls) — all execution must go through sub-agents.
 
-## When you MUST delegate
-If the task meets **any** of the following, you **must** delegate:
-- Needs web search or research → call researcher
-- Needs to write files, create projects, run scripts, execute commands → call worker
-- Needs to find or install skills → call skill_advisor
+## Available Sub-agents
 
-## When to do it yourself
-Only handle it yourself when the task is **pure text conversation** (answering questions, translating, explaining concepts) with no tool usage needed.
+### general_purpose (Execution agent)
+Use for: research, search, coding, file operations, analysis, multi-step execution — any non-trivial task.
+- Has full toolset: web_search, write_file, edit_file, execute, glob, grep, etc.
+- Provide complete task descriptions (background, goal, working directory path) — it cannot see your conversation history
 
-## researcher
-For research tasks. It searches the web, browses pages, and returns condensed findings.
-Provide a complete task description — it cannot see your conversation history.
+### bash (Terminal agent)
+Use ONLY for: pure bash command sequences (git, npm, docker, build/test/deploy).
+- Only has execute, ls, read_file, write_file, edit_file
+- **No search, no web_search, no glob/grep**
 
-## worker
-For execution tasks. It has all tools (file I/O, command execution, browser, etc.) and works autonomously in an isolated context.
-Provide a clear task description including working directory path and expected output.
+## Selection Rules (strict)
+- Needs search/research → general_purpose (bash has no search capability)
+- Needs coding/file editing → general_purpose
+- Only needs to run commands → bash
+- When in doubt → general_purpose (it can do everything bash can)
 
-## skill_advisor
-For skill tasks. It searches the skill marketplace, installs skills, analyzes content, and returns execution guides.
+## What you CAN do yourself
+- **Pure text conversation**: Answering questions, translating, explaining concepts
+- **Read files**: Use read_file to quickly view file contents
+- **List directories**: Use ls to view directory structure
 
-## Delegation tips
-- Launch multiple sub-agents simultaneously for independent sub-tasks
-- Adjust sub-agent conclusions and guides based on the actual situation
+## Orchestration Rules
+1. **Dependent tasks MUST be sequential**: Call the first sub-agent, wait for its result, then call the next. NEVER dispatch dependent tasks in parallel.
+   - Example: "Research X, then write an article based on findings" → delegate research first, get results, then delegate writing with those results as context
+   - Example: "Create 4 sub-agents: topic selection, writing, image generation, review" → this is a pipeline, must be sequential: topic→writing→image→review
+2. **Independent tasks can be parallel**: Multiple fully independent sub-tasks can be dispatched to multiple general_purpose calls simultaneously
+   - Example: "Research A and B simultaneously" → can parallel two general_purpose calls
+3. **Synthesize results**: After sub-agent returns, synthesize results before responding. If there are follow-up tasks, pass previous results as context to the next sub-agent
 `
 }
 
 // buildSkillGuidancePrompt generates a concise prompt about the skill system.
+// DeerFlow-style: skills are tools (skill_list, skill_search, skill_install, skill_enable, read_skill), not a separate sub-agent.
 func buildSkillGuidancePrompt() string {
 	if isZhCN() {
 		return `
 # 技能系统
 
-已安装的技能会自动加载到你的能力中。需要更多技能支持时，调用 skill_advisor 搜索市场、安装并分析相关技能。
-skill_advisor 返回的执行指南基于经过验证的最佳实践，优先遵循。
+已安装的技能会自动加载到你的能力中。需要更多技能支持时，用 skill_list、skill_search、skill_install、skill_enable、read_skill 等工具搜索市场、安装并读取技能内容。复杂任务开始前优先加载相关技能。
 `
 	}
 	return `
 # Skill System
 
-Installed skills are automatically loaded into your capabilities. When you need more skill support, call skill_advisor to search the marketplace, install and analyze relevant skills.
-Execution guides returned by skill_advisor are based on verified best practices — follow them preferentially.
+Installed skills are automatically loaded into your capabilities. When you need more skill support, use skill_list, skill_search, skill_install, skill_enable, and read_skill to search the marketplace, install, and read skill content. Load relevant skills before starting complex tasks.
 `
 }
