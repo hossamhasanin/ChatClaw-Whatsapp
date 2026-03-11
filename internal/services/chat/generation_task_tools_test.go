@@ -19,6 +19,8 @@ func TestBuildExtrasIncludesScheduledTaskTools(t *testing.T) {
 			&testTool{name: "scheduled_task_delete"},
 			&testTool{name: "scheduled_task_enable"},
 			&testTool{name: "scheduled_task_disable"},
+			&testTool{name: "scheduled_task_history_list"},
+			&testTool{name: "scheduled_task_history_detail"},
 		}, nil
 	})
 	gc := &generationContext{
@@ -36,6 +38,8 @@ func TestBuildExtrasIncludesScheduledTaskTools(t *testing.T) {
 		"scheduled_task_delete",
 		"scheduled_task_enable",
 		"scheduled_task_disable",
+		"scheduled_task_history_list",
+		"scheduled_task_history_detail",
 	} {
 		if !contains(names, want) {
 			t.Fatalf("expected tool %q in extras, got %+v", want, names)

@@ -60,6 +60,21 @@ func newScheduledTaskManagementTools(agentsService *agents.AgentsService, schedu
 			}
 			return convertScheduledTaskRecords(items), nil
 		},
+		ListScheduledTaskRunsFn: func(taskID int64, page, pageSize int) ([]tools.ScheduledTaskRunRecord, error) {
+			items, err := scheduledTasksService.ListScheduledTaskRuns(taskID, page, pageSize)
+			if err != nil {
+				return nil, err
+			}
+			return convertScheduledTaskRunRecords(items), nil
+		},
+		GetScheduledTaskRunDetailFn: func(runID int64) (*tools.ScheduledTaskRunDetailRecord, error) {
+			item, err := scheduledTasksService.GetScheduledTaskRunDetail(runID)
+			if err != nil {
+				return nil, err
+			}
+			record := convertScheduledTaskRunDetailRecord(*item)
+			return &record, nil
+		},
 		ValidateScheduleFn: func(scheduleType, scheduleValue, cronExpr string) (*tools.ScheduledTaskValidationResult, error) {
 			result, err := scheduledTasksService.ValidateSchedule(scheduleType, scheduleValue, cronExpr)
 			if err != nil {
@@ -129,5 +144,42 @@ func convertScheduledTaskRecord(item scheduledtasks.ScheduledTask) tools.Schedul
 		LastRunID:     item.LastRunID,
 		CreatedAt:     item.CreatedAt,
 		UpdatedAt:     item.UpdatedAt,
+	}
+}
+
+func convertScheduledTaskRunRecords(items []scheduledtasks.ScheduledTaskRun) []tools.ScheduledTaskRunRecord {
+	out := make([]tools.ScheduledTaskRunRecord, 0, len(items))
+	for _, item := range items {
+		out = append(out, convertScheduledTaskRunRecord(item))
+	}
+	return out
+}
+
+func convertScheduledTaskRunRecord(item scheduledtasks.ScheduledTaskRun) tools.ScheduledTaskRunRecord {
+	return tools.ScheduledTaskRunRecord{
+		ID:                 item.ID,
+		TaskID:             item.TaskID,
+		TriggerType:        item.TriggerType,
+		Status:             item.Status,
+		ErrorMessage:       item.ErrorMessage,
+		ConversationID:     item.ConversationID,
+		UserMessageID:      item.UserMessageID,
+		AssistantMessageID: item.AssistantMessageID,
+		SnapshotTaskName:   item.SnapshotTaskName,
+		SnapshotPrompt:     item.SnapshotPrompt,
+		SnapshotAgentID:    item.SnapshotAgentID,
+		StartedAt:          item.StartedAt,
+		FinishedAt:         item.FinishedAt,
+		DurationMS:         item.DurationMS,
+		CreatedAt:          item.CreatedAt,
+		UpdatedAt:          item.UpdatedAt,
+	}
+}
+
+func convertScheduledTaskRunDetailRecord(item scheduledtasks.ScheduledTaskRunDetail) tools.ScheduledTaskRunDetailRecord {
+	return tools.ScheduledTaskRunDetailRecord{
+		Run:          convertScheduledTaskRunRecord(item.Run),
+		Conversation: item.Conversation,
+		Messages:     item.Messages,
 	}
 }

@@ -47,6 +47,31 @@ type ScheduledTaskCreateInput struct {
 	Enabled       bool   `json:"enabled"`
 }
 
+type ScheduledTaskRunRecord struct {
+	ID                 int64      `json:"id"`
+	TaskID             int64      `json:"task_id"`
+	TriggerType        string     `json:"trigger_type"`
+	Status             string     `json:"status"`
+	ErrorMessage       string     `json:"error_message"`
+	ConversationID     *int64     `json:"conversation_id,omitempty"`
+	UserMessageID      *int64     `json:"user_message_id,omitempty"`
+	AssistantMessageID *int64     `json:"assistant_message_id,omitempty"`
+	SnapshotTaskName   string     `json:"snapshot_task_name"`
+	SnapshotPrompt     string     `json:"snapshot_prompt"`
+	SnapshotAgentID    int64      `json:"snapshot_agent_id"`
+	StartedAt          time.Time  `json:"started_at"`
+	FinishedAt         *time.Time `json:"finished_at,omitempty"`
+	DurationMS         int64      `json:"duration_ms"`
+	CreatedAt          time.Time  `json:"created_at,omitempty"`
+	UpdatedAt          time.Time  `json:"updated_at,omitempty"`
+}
+
+type ScheduledTaskRunDetailRecord struct {
+	Run          ScheduledTaskRunRecord `json:"run"`
+	Conversation any                    `json:"conversation"`
+	Messages     any                    `json:"messages"`
+}
+
 type ScheduledTaskValidationResult struct {
 	ScheduleType  string     `json:"schedule_type"`
 	ScheduleValue string     `json:"schedule_value"`
@@ -56,15 +81,17 @@ type ScheduledTaskValidationResult struct {
 }
 
 type ScheduledTaskManagementConfig struct {
-	ListAgentsForMatchingFn func() ([]ScheduledTaskAgent, error)
-	MatchAgentsByNameFn     func(string) ([]ScheduledTaskAgent, string, error)
-	ListScheduledTasksFn    func() ([]ScheduledTaskRecord, error)
-	GetScheduledTaskByIDFn  func(int64) (*ScheduledTaskRecord, error)
-	FindScheduledTasksFn    func(string) ([]ScheduledTaskRecord, error)
-	ValidateScheduleFn      func(string, string, string) (*ScheduledTaskValidationResult, error)
-	CreateScheduledTaskFn   func(ScheduledTaskCreateInput) (*ScheduledTaskRecord, error)
-	DeleteScheduledTaskFn   func(int64) error
-	SetScheduledTaskFn      func(int64, bool) (*ScheduledTaskRecord, error)
+	ListAgentsForMatchingFn     func() ([]ScheduledTaskAgent, error)
+	MatchAgentsByNameFn         func(string) ([]ScheduledTaskAgent, string, error)
+	ListScheduledTasksFn        func() ([]ScheduledTaskRecord, error)
+	GetScheduledTaskByIDFn      func(int64) (*ScheduledTaskRecord, error)
+	FindScheduledTasksFn        func(string) ([]ScheduledTaskRecord, error)
+	ListScheduledTaskRunsFn     func(int64, int, int) ([]ScheduledTaskRunRecord, error)
+	GetScheduledTaskRunDetailFn func(int64) (*ScheduledTaskRunDetailRecord, error)
+	ValidateScheduleFn          func(string, string, string) (*ScheduledTaskValidationResult, error)
+	CreateScheduledTaskFn       func(ScheduledTaskCreateInput) (*ScheduledTaskRecord, error)
+	DeleteScheduledTaskFn       func(int64) error
+	SetScheduledTaskFn          func(int64, bool) (*ScheduledTaskRecord, error)
 }
 
 func NewScheduledTaskManagementTools(config *ScheduledTaskManagementConfig) ([]tool.BaseTool, error) {
@@ -76,6 +103,8 @@ func NewScheduledTaskManagementTools(config *ScheduledTaskManagementConfig) ([]t
 		&scheduledTaskDeleteTool{config: config},
 		&scheduledTaskEnableTool{config: config},
 		&scheduledTaskDisableTool{config: config},
+		&scheduledTaskHistoryListTool{config: config},
+		&scheduledTaskHistoryDetailTool{config: config},
 	}, nil
 }
 
@@ -104,6 +133,14 @@ type scheduledTaskEnableTool struct {
 }
 
 type scheduledTaskDisableTool struct {
+	config *ScheduledTaskManagementConfig
+}
+
+type scheduledTaskHistoryListTool struct {
+	config *ScheduledTaskManagementConfig
+}
+
+type scheduledTaskHistoryDetailTool struct {
 	config *ScheduledTaskManagementConfig
 }
 
@@ -141,6 +178,17 @@ type scheduledTaskMutationInput struct {
 	TaskID   int64  `json:"task_id"`
 	TaskName string `json:"task_name"`
 	Confirm  bool   `json:"confirm"`
+}
+
+type scheduledTaskHistoryListInput struct {
+	TaskID   int64  `json:"task_id"`
+	TaskName string `json:"task_name"`
+	Page     int    `json:"page"`
+	PageSize int    `json:"page_size"`
+}
+
+type scheduledTaskHistoryDetailInput struct {
+	RunID int64 `json:"run_id"`
 }
 
 func (t *scheduledTaskListTool) Info(_ context.Context) (*schema.ToolInfo, error) {
@@ -224,6 +272,35 @@ func (t *scheduledTaskEnableTool) Info(_ context.Context) (*schema.ToolInfo, err
 
 func (t *scheduledTaskDisableTool) Info(_ context.Context) (*schema.ToolInfo, error) {
 	return mutationToolInfo("scheduled_task_disable", "Preview or disable a scheduled task after user confirmation.", "预检查或停用计划任务，停用前需要用户确认。")
+}
+
+func (t *scheduledTaskHistoryListTool) Info(_ context.Context) (*schema.ToolInfo, error) {
+	return &schema.ToolInfo{
+		Name: "scheduled_task_history_list",
+		Desc: selectDesc(
+			"List run history for a scheduled task by task ID or task name.",
+			"按任务 ID 或任务名称查询计划任务运行历史。",
+		),
+		ParamsOneOf: schema.NewParamsOneOfByParams(map[string]*schema.ParameterInfo{
+			"task_id":   {Type: schema.Integer, Desc: selectDesc("Task ID", "任务 ID"), Required: false},
+			"task_name": {Type: schema.String, Desc: selectDesc("Task name", "任务名称"), Required: false},
+			"page":      {Type: schema.Integer, Desc: selectDesc("Page number", "页码"), Required: false},
+			"page_size": {Type: schema.Integer, Desc: selectDesc("Page size", "每页数量"), Required: false},
+		}),
+	}, nil
+}
+
+func (t *scheduledTaskHistoryDetailTool) Info(_ context.Context) (*schema.ToolInfo, error) {
+	return &schema.ToolInfo{
+		Name: "scheduled_task_history_detail",
+		Desc: selectDesc(
+			"Read the full detail for a scheduled task run by run ID.",
+			"按运行记录 ID 查询某次计划任务执行详情。",
+		),
+		ParamsOneOf: schema.NewParamsOneOfByParams(map[string]*schema.ParameterInfo{
+			"run_id": {Type: schema.Integer, Desc: selectDesc("Run ID", "运行记录 ID"), Required: true},
+		}),
+	}, nil
 }
 
 func mutationToolInfo(name, enDesc, zhDesc string) (*schema.ToolInfo, error) {
@@ -443,6 +520,73 @@ func (t *scheduledTaskDisableTool) InvokableRun(_ context.Context, arguments str
 	return t.runMutation(arguments, "disable", false)
 }
 
+func (t *scheduledTaskHistoryListTool) InvokableRun(_ context.Context, arguments string, _ ...tool.Option) (string, error) {
+	if t.config == nil || t.config.ListScheduledTaskRunsFn == nil {
+		return "", fmt.Errorf("scheduled task history list is unavailable")
+	}
+
+	var input scheduledTaskHistoryListInput
+	if err := decodeJSONArguments(arguments, &input); err != nil {
+		return "", err
+	}
+
+	task, candidates, err := resolveTaskForLookup(t.config, input.TaskID, input.TaskName)
+	if err != nil {
+		return "", err
+	}
+	if task == nil {
+		issues := []string{"匹配到多个任务，需要用户指定具体目标"}
+		if len(candidates) == 0 {
+			issues = []string{"未找到匹配的任务"}
+		}
+		return marshalJSON(map[string]any{
+			"issues":        issues,
+			"matched_tasks": candidates,
+		}), nil
+	}
+
+	page := input.Page
+	if page <= 0 {
+		page = 1
+	}
+	pageSize := input.PageSize
+	if pageSize <= 0 {
+		pageSize = 20
+	}
+
+	runs, err := t.config.ListScheduledTaskRunsFn(task.ID, page, pageSize)
+	if err != nil {
+		return "", err
+	}
+	return marshalJSON(map[string]any{
+		"task":      task,
+		"runs":      runs,
+		"count":     len(runs),
+		"page":      page,
+		"page_size": pageSize,
+	}), nil
+}
+
+func (t *scheduledTaskHistoryDetailTool) InvokableRun(_ context.Context, arguments string, _ ...tool.Option) (string, error) {
+	if t.config == nil || t.config.GetScheduledTaskRunDetailFn == nil {
+		return "", fmt.Errorf("scheduled task history detail is unavailable")
+	}
+
+	var input scheduledTaskHistoryDetailInput
+	if err := decodeJSONArguments(arguments, &input); err != nil {
+		return "", err
+	}
+	if input.RunID <= 0 {
+		return "", fmt.Errorf("run_id is required")
+	}
+
+	detail, err := t.config.GetScheduledTaskRunDetailFn(input.RunID)
+	if err != nil {
+		return "", err
+	}
+	return marshalJSON(detail), nil
+}
+
 func (t *scheduledTaskDeleteTool) runMutation(arguments, action string, enabled bool) (string, error) {
 	return runTaskMutation(t.config, arguments, action, enabled)
 }
@@ -539,18 +683,25 @@ func runTaskMutation(config *ScheduledTaskManagementConfig, arguments, action st
 }
 
 func resolveTaskForMutation(config *ScheduledTaskManagementConfig, input scheduledTaskMutationInput) (*ScheduledTaskRecord, []ScheduledTaskRecord, error) {
-	if input.TaskID > 0 {
+	return resolveTaskForLookup(config, input.TaskID, input.TaskName)
+}
+
+func resolveTaskForLookup(config *ScheduledTaskManagementConfig, taskID int64, taskName string) (*ScheduledTaskRecord, []ScheduledTaskRecord, error) {
+	if taskID > 0 {
 		if config.GetScheduledTaskByIDFn == nil {
 			return nil, nil, fmt.Errorf("scheduled task lookup is unavailable")
 		}
-		task, err := config.GetScheduledTaskByIDFn(input.TaskID)
+		task, err := config.GetScheduledTaskByIDFn(taskID)
 		if err != nil {
 			return nil, nil, err
+		}
+		if task == nil {
+			return nil, nil, nil
 		}
 		return task, []ScheduledTaskRecord{*task}, nil
 	}
 
-	name := strings.TrimSpace(input.TaskName)
+	name := strings.TrimSpace(taskName)
 	if name == "" {
 		return nil, nil, fmt.Errorf("task_id or task_name is required")
 	}

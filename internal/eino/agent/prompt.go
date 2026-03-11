@@ -373,6 +373,8 @@ func buildScheduledTaskPrompt() string {
 
 ### 查询任务
 - ` + "`scheduled_task_list`" + `: 查询任务列表，支持关键词搜索和状态过滤
+- ` + "`scheduled_task_history_list`" + `: 查询某个任务的运行历史，支持 task_id 或 task_name
+- ` + "`scheduled_task_history_detail`" + `: 按 run_id 查看某次运行的完整详情
 
 ### 创建任务（两步流程）
 1. ` + "`scheduled_task_create_preview`" + `: 预览任务草案，校验参数，生成确认摘要
@@ -382,6 +384,11 @@ func buildScheduledTaskPrompt() string {
 - ` + "`scheduled_task_enable`" + `: 启用已停用的任务
 - ` + "`scheduled_task_disable`" + `: 停用已启用的任务
 - ` + "`scheduled_task_delete`" + `: 删除任务
+
+### 查询历史推荐流程
+1. 先调用 ` + "`scheduled_task_history_list`" + ` 找到目标任务的运行记录
+2. 再使用返回的 ` + "`run_id`" + ` 调用 ` + "`scheduled_task_history_detail`" + ` 查看会话和消息详情
+3. 这两个历史工具都是只读，不需要确认
 
 ### 助手匹配
 - ` + "`agent_match_by_name`" + `: 按名称匹配 AI 助手，返回匹配状态和候选列表
@@ -465,6 +472,9 @@ func buildScheduledTaskPrompt() string {
 
 用户: "帮我创建一个每天早上9点执行的销售日报任务"
 助手: 调用 ` + "`scheduled_task_create_preview`" + ` → 向用户展示预览 → 用户确认 → 调用 ` + "`scheduled_task_create_confirm`" + `
+
+用户: "帮我看看销售日报这个任务最近执行历史"
+助手: 调用 ` + "`scheduled_task_history_list`" + ` → 如用户要复盘某次执行，再调用 ` + "`scheduled_task_history_detail`" + `
 `
 	}
 	return `
@@ -476,6 +486,8 @@ You can help users manage scheduled tasks. When users mention "scheduled tasks",
 
 ### Query Tasks
 - ` + "`scheduled_task_list`" + `: List tasks with optional keyword search and status filter
+- ` + "`scheduled_task_history_list`" + `: List run history for a task by task_id or task_name
+- ` + "`scheduled_task_history_detail`" + `: Read a single run detail by run_id
 
 ### Create Task (Two-Step Process)
 1. ` + "`scheduled_task_create_preview`" + `: Preview task draft, validate parameters, generate confirmation summary
@@ -485,6 +497,11 @@ You can help users manage scheduled tasks. When users mention "scheduled tasks",
 - ` + "`scheduled_task_enable`" + `: Enable a disabled task
 - ` + "`scheduled_task_disable`" + `: Disable an enabled task
 - ` + "`scheduled_task_delete`" + `: Delete a task
+
+### Recommended History Workflow
+1. Call ` + "`scheduled_task_history_list`" + ` first to find recent runs for the target task
+2. Then call ` + "`scheduled_task_history_detail`" + ` with a returned ` + "`run_id`" + ` to inspect conversation and messages
+3. These history tools are read-only and do not require confirmation
 
 ### Agent Matching
 - ` + "`agent_match_by_name`" + `: Match AI assistant by name, returns match status and candidates
@@ -568,5 +585,8 @@ Examples:
 
 User: "Create a daily sales report task at 9am"
 Assistant: Call ` + "`scheduled_task_create_preview`" + ` → Show preview to user → User confirms → Call ` + "`scheduled_task_create_confirm`" + `
+
+User: "Show me the recent history for the sales report task"
+Assistant: Call ` + "`scheduled_task_history_list`" + ` → If the user wants one run in depth, call ` + "`scheduled_task_history_detail`" + `
 `
 }
