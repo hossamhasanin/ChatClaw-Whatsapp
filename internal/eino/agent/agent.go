@@ -87,8 +87,8 @@ type Config struct {
 	SkillsEnabled   bool   // Global skills toggle from settings
 
 	IMGateway          *channels.Gateway // Gateway for IM tools (nil = no IM tools)
-	IMDefaultChannelID int64              // Auto-filled from channel source context (0 = not set)
-	IMDefaultTargetID  string             // Auto-filled from channel source context ("" = not set)
+	IMDefaultChannelID int64             // Auto-filled from channel source context (0 = not set)
+	IMDefaultTargetID  string            // Auto-filled from channel source context ("" = not set)
 }
 
 // AgentResult holds the created agent and a cleanup function that should be

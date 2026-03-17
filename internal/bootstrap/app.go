@@ -46,8 +46,8 @@ import (
 	"chatclaw/pkg/winutil"
 
 	"github.com/cloudwego/eino/adk"
-	"github.com/uptrace/bun"
 	"github.com/cloudwego/eino/components/tool"
+	"github.com/uptrace/bun"
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
 )
@@ -695,10 +695,16 @@ func handleChannelMessage(
 			return
 		}
 
+		// QQ passive replies require the original user message ID to be attached.
+		content := text
+		if msg.Platform == channels.PlatformQQ && msg.MessageID != "" {
+			content = channels.InjectQQMsgID(text, msg.MessageID)
+		}
+
 		replyCtx, replyCancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer replyCancel()
 
-		if err := adapter.SendMessage(replyCtx, replyTarget, text); err != nil {
+		if err := adapter.SendMessage(replyCtx, replyTarget, content); err != nil {
 			app.Logger.Error("channel message: send reply failed", "channel_id", msg.ChannelID, "target", replyTarget, "error", err)
 			return
 		}

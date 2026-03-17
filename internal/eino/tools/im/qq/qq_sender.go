@@ -55,10 +55,10 @@ type qqSenderInput struct {
 func (t *qqSenderTool) Info(_ context.Context) (*schema.ToolInfo, error) {
 	descEN := "Send a message to QQ via a connected channel. " +
 		"Supports sending to groups (prefix target_id with 'group:') or individual users via C2C (prefix with 'user:'). " +
-		"For text messages, provide content as plain text."
+		"Content: plain text; or JSON: markdown {\"msg_type\":\"markdown\",\"content\":\"...\"}; image/file with url (direct send) or {\"msg_type\":\"image\",\"url\":\"...\",\"srv_send_msg\":false} to upload-then-send; or use {\"msg_type\":\"image\",\"file_info\":\"...\"} with pre-obtained file_info."
 	descZH := "通过已连接的 QQ 渠道发送消息。" +
 		"支持发送到群聊（target_id 添加 'group:' 前缀）或通过 C2C 发送给个人用户（添加 'user:' 前缀）。" +
-		"发送文本消息：content 提供纯文本内容。"
+		"内容：纯文本；或 JSON：markdown {\"msg_type\":\"markdown\",\"content\":\"...\"}；图片/文件可传 url 直接发送，或 {\"msg_type\":\"image\",\"url\":\"...\",\"srv_send_msg\":false} 先上传再发；也可用 {\"msg_type\":\"image\",\"file_info\":\"...\"} 传入已有 file_info。"
 
 	channelIDDescEN := "The channel ID of the connected QQ channel to use for sending."
 	channelIDDescZH := "用于发送的已连接 QQ 渠道 ID。"
@@ -96,8 +96,8 @@ func (t *qqSenderTool) Info(_ context.Context) (*schema.ToolInfo, error) {
 			"content": {
 				Type: schema.String,
 				Desc: selectDesc(
-					"Message content to send. Plain text will be sent as a text message.",
-					"要发送的消息内容。纯文本将作为文本消息发送。",
+					"Message content: plain text; or JSON with msg_type (markdown/content, image/file with url or file_info). Use srv_send_msg:false for upload-then-send.",
+					"消息内容：纯文本；或 JSON，msg_type 为 markdown/content、image/file 可带 url 或 file_info；srv_send_msg:false 表示先上传再发。",
 				),
 				Required: true,
 			},
