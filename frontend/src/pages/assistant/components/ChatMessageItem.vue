@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Pencil, Copy, Check, AlertCircle, ChevronDown, ChevronUp, SendHorizontal, Type, ShieldCheck, Monitor } from 'lucide-vue-next'
+import { Pencil, Copy, Check, AlertCircle, ChevronDown, ChevronUp, SendHorizontal, Type, ShieldCheck, Monitor, File as FileIcon, ExternalLink } from 'lucide-vue-next'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { toast } from '@/components/ui/toast'
@@ -15,6 +15,7 @@ import RetrievalBlock from './RetrievalBlock.vue'
 import MessageEditor from './MessageEditor.vue'
 import MarkdownRenderer from '@/components/MarkdownRenderer.vue'
 import ImagePreviewDialog from './ImagePreviewDialog.vue'
+import { BrowserService } from '@bindings/chatclaw/internal/services/browser'
 
 const props = defineProps<{
   message: Message
@@ -138,22 +139,29 @@ const isAssistant = computed(() => props.message.role === MessageRole.ASSISTANT)
 const isTool = computed(() => props.message.role === MessageRole.TOOL)
 const isSnapMode = computed(() => props.mode === 'snap')
 
-// Parse images from images_json
-const images = computed<ImagePayload[]>(() => {
+// Parse attachments from images_json (images + files)
+const allAttachments = computed<ImagePayload[]>(() => {
   if (!props.message.images_json) return []
   try {
     const parsed = JSON.parse(props.message.images_json)
-    if (Array.isArray(parsed)) {
-      return parsed.map((img: ImagePayload) => ({
-        ...img,
-        data_url: img.data_url || `data:${img.mime_type};base64,${img.base64}`,
-      }))
-    }
-    return []
+    return Array.isArray(parsed) ? parsed : []
   } catch {
     return []
   }
 })
+
+const images = computed<ImagePayload[]>(() =>
+  allAttachments.value
+    .filter((a) => a.kind !== 'file')
+    .map((img) => ({
+      ...img,
+      data_url: img.data_url || `data:${img.mime_type};base64,${img.base64}`,
+    }))
+)
+
+const fileAttachments = computed<ImagePayload[]>(() =>
+  allAttachments.value.filter((a) => a.kind === 'file')
+)
 
 // Token usage display: only show when not streaming and has token data
 const hasTokenUsage = computed(() => {
@@ -274,6 +282,23 @@ const handleCancelEdit = () => {
 const openImagePreview = (index: number) => {
   imagePreviewIndex.value = index
   imagePreviewOpen.value = true
+}
+
+const formatFileSize = (bytes: number | undefined): string => {
+  if (!bytes) return ''
+  if (bytes < 1024) return bytes + ' B'
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
+  return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
+}
+
+const handleOpenFile = async (filePath: string) => {
+  if (!filePath) return
+  try {
+    await BrowserService.OpenFile(filePath)
+  } catch (err) {
+    console.error('Failed to open file:', err)
+    toast.error(t('assistant.errors.fileOpenFailed'))
+  }
 }
 
 // Lazy loading setup with Intersection Observer
@@ -488,6 +513,24 @@ onUnmounted(() => {
                 loading="lazy"
               />
             </div>
+          </div>
+          <!-- File attachment cards -->
+          <div v-if="fileAttachments.length > 0" class="mt-2 flex flex-wrap gap-2">
+            <button
+              v-for="f in fileAttachments"
+              :key="f.id || f.file_name || f.file_path"
+              class="flex items-center gap-2.5 rounded-lg border border-border bg-muted/30 px-3 py-2 text-left transition-colors hover:bg-muted/60"
+              @click="handleOpenFile(f.file_path || '')"
+            >
+              <FileIcon class="size-5 shrink-0 text-muted-foreground" />
+              <div class="flex min-w-0 flex-col">
+                <span class="truncate text-xs font-medium text-foreground" :title="f.original_name || f.file_name">
+                  {{ f.original_name || f.file_name || 'File' }}
+                </span>
+                <span v-if="f.size" class="text-[10px] text-muted-foreground">{{ formatFileSize(f.size) }}</span>
+              </div>
+              <ExternalLink class="size-3.5 shrink-0 text-muted-foreground/60" />
+            </button>
           </div>
         </div>
       </div>

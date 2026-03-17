@@ -340,9 +340,17 @@ export const useChatStore = defineStore('chat', () => {
       dataUrl: string
       fileName: string
       size: number
+    }>,
+    files?: Array<{
+      id: string
+      file: File
+      mimeType: string
+      base64: string
+      fileName: string
+      size: number
     }>
   ) => {
-    const hasContent = content.trim() !== '' || (images && images.length > 0)
+    const hasContent = content.trim() !== '' || (images && images.length > 0) || (files && files.length > 0)
     if (conversationId <= 0 || !hasContent) return null
 
     // Map images to ImagePayload format
@@ -356,6 +364,20 @@ export const useChatStore = defineStore('chat', () => {
         size: img.size,
       })) || []
 
+    // Map files to ImagePayload format (reusing images field)
+    const filePayloads =
+      files?.map((f) => ({
+        kind: 'file',
+        source: 'inline_base64',
+        mime_type: f.mimeType,
+        base64: f.base64,
+        file_name: f.fileName,
+        original_name: f.fileName,
+        size: f.size,
+      })) || []
+
+    const allPayloads = [...imagePayloads, ...filePayloads]
+
     // Optimistically append user message (backend inserts user msg, but doesn't emit an event for it)
     localMessageCounter -= 1
     const localUserMessageId = localMessageCounter
@@ -367,7 +389,7 @@ export const useChatStore = defineStore('chat', () => {
       status: MessageStatus.SUCCESS,
       thinking_content: '',
       tool_calls: '[]',
-      images_json: JSON.stringify(imagePayloads),
+      images_json: JSON.stringify(allPayloads),
       input_tokens: 0,
       output_tokens: 0,
       created_at: null as any,
@@ -380,7 +402,7 @@ export const useChatStore = defineStore('chat', () => {
           conversation_id: conversationId,
           content: content.trim(),
           tab_id: tabId,
-          images: imagePayloads,
+          images: allPayloads,
         })
       )
 

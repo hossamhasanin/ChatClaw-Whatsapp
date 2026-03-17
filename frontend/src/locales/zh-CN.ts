@@ -734,6 +734,9 @@ export default {
       retrievalScore: "相关度",
       retrievalItems: "{count} 条结果",
       tokenUsage: "输入 {input} · 输出 {output}",
+      uploadFile: "上传文件",
+      selectFiles: "选择文件",
+      fileMessage: "文件消息",
     },
     menu: {
       settings: "助手设置",
@@ -815,6 +818,11 @@ export default {
       teamRobotMissingKey: "当前机器人缺少 robot_key，请重新同步",
       modelNotSupportVision: "当前模型不支持图片识别，请切换到支持视觉的多模态模型",
       modelNotSupportVisionHint: "例如 GPT-4o、Claude、Gemini 等模型支持图片识别",
+      fileTooLarge: "文件大小超过限制（最大 {max}）",
+      tooManyFiles: "最多上传 {max} 个文件",
+      invalidFileType: "不支持的文件类型",
+      fileReadFailed: "文件读取失败",
+      fileOpenFailed: "文件打开失败",
     },
     toasts: {
       created: "助手创建成功",

@@ -734,6 +734,9 @@ export default {
       retrievalScore: "Relevance",
       retrievalItems: "{count} result(s)",
       tokenUsage: "In {input} · Out {output}",
+      uploadFile: "Upload File",
+      selectFiles: "Select Files",
+      fileMessage: "File message",
     },
     menu: {
       settings: "Agent Settings",
@@ -815,6 +818,11 @@ export default {
       teamRobotMissingKey: "Current robot is missing robot_key, please sync again",
       modelNotSupportVision: "Current model does not support image recognition. Please switch to a multimodal vision model",
       modelNotSupportVisionHint: "Models like GPT-4o, Claude, Gemini support image recognition",
+      fileTooLarge: "File size exceeds limit (max {max})",
+      tooManyFiles: "Upload up to {max} files",
+      invalidFileType: "Unsupported file type",
+      fileReadFailed: "Failed to read file",
+      fileOpenFailed: "Failed to open file",
     },
     toasts: {
       created: "Agent created",

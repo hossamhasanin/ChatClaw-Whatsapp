@@ -45,6 +45,15 @@ interface PendingImage {
   size: number
 }
 
+interface PendingFile {
+  id: string
+  file: File
+  mimeType: string
+  base64: string
+  fileName: string
+  size: number
+}
+
 const props = withDefaults(
   defineProps<{
     mode?: 'assistant' | 'knowledge'
@@ -78,6 +87,7 @@ const props = withDefaults(
     /** Assistant page: selected team library ids (multi-select; persisted as comma-separated) */
     assistantSelectedTeamLibraryIds?: string[]
     pendingImages?: PendingImage[]
+    pendingFiles?: PendingFile[]
   }>(),
   {
     mode: 'assistant',
@@ -88,6 +98,7 @@ const props = withDefaults(
     assistantTeamLibraries: () => [],
     assistantSelectedTeamLibraryIds: () => [],
     pendingImages: () => [],
+    pendingFiles: () => [],
   }
 )
 
@@ -109,6 +120,9 @@ const emit = defineEmits<{
   addImages: [files: FileList | File[]]
   removeImage: [id: string]
   clearImages: []
+  addFiles: [files: FileList | File[]]
+  removeFile: [id: string]
+  clearFiles: []
   'update:selectedTeamLibraryId': [value: string | null]
   /** Assistant page: toggle one team library id in multi-select (personal + team can coexist) */
   toggleAssistantTeamLibrary: [id: string]
@@ -297,8 +311,32 @@ const processImageFiles = (files: FileList | File[]): File[] | null => {
   return imageFiles
 }
 
+const formatFileSize = (bytes: number): string => {
+  if (bytes < 1024) return bytes + ' B'
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
+  return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
+}
+
 const handleSelectImagesClick = () => {
   fileInputRef.value?.click()
+}
+
+const docFileInputRef = ref<HTMLInputElement | null>(null)
+
+const handleSelectFilesClick = () => {
+  docFileInputRef.value?.click()
+}
+
+const handleDocFilesSelected = async (event: Event) => {
+  const target = event.target as HTMLInputElement
+  const files = target.files
+  if (!files || files.length === 0) return
+
+  emit('addFiles', Array.from(files))
+
+  if (docFileInputRef.value) {
+    docFileInputRef.value.value = ''
+  }
 }
 
 const handleFilesSelected = async (event: Event) => {
@@ -363,6 +401,11 @@ const handleDragLeave = (event: DragEvent) => {
   }
 }
 
+const ALLOWED_DOC_EXTENSIONS = new Set([
+  'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx',
+  'txt', 'csv', 'md', 'json', 'xml', 'html', 'rtf', 'log',
+])
+
 const handleDrop = async (event: DragEvent) => {
   event.preventDefault()
   event.stopPropagation()
@@ -371,9 +414,23 @@ const handleDrop = async (event: DragEvent) => {
   const files = event.dataTransfer?.files
   if (!files || files.length === 0) return
 
-  const validFiles = processImageFiles(files)
-  if (validFiles) {
-    emit('addImages', validFiles)
+  const fileArray = Array.from(files)
+  const imageFiles = fileArray.filter(f => f.type.startsWith('image/'))
+  const docFiles = fileArray.filter(f => {
+    if (f.type.startsWith('image/')) return false
+    const ext = f.name.split('.').pop()?.toLowerCase() || ''
+    return ALLOWED_DOC_EXTENSIONS.has(ext)
+  })
+
+  if (imageFiles.length > 0) {
+    const validImages = processImageFiles(imageFiles)
+    if (validImages) {
+      emit('addImages', validImages)
+    }
+  }
+
+  if (docFiles.length > 0) {
+    emit('addFiles', docFiles)
   }
 }
 
@@ -446,6 +503,27 @@ onUnmounted(() => {
             <button
               class="absolute right-0 top-0 flex size-4 items-center justify-center rounded-bl-md bg-destructive/80 text-destructive-foreground opacity-0 transition-opacity group-hover:opacity-100"
               @click="handleRemoveImage(img.id)"
+            >
+              <X class="size-3" />
+            </button>
+          </div>
+        </div>
+
+        <!-- File preview area -->
+        <div v-if="pendingFiles.length > 0" class="-mt-1 mb-3 flex flex-wrap gap-2">
+          <div
+            v-for="f in pendingFiles"
+            :key="f.id"
+            class="group relative flex items-center gap-2 rounded-md border border-border bg-muted/40 px-3 py-2"
+          >
+            <File class="size-4 shrink-0 text-muted-foreground" />
+            <div class="flex min-w-0 flex-col">
+              <span class="truncate text-xs font-medium text-foreground" :title="f.fileName">{{ f.fileName }}</span>
+              <span class="text-[10px] text-muted-foreground">{{ formatFileSize(f.size) }}</span>
+            </div>
+            <button
+              class="ml-1 flex size-4 shrink-0 items-center justify-center rounded-full bg-destructive/80 text-destructive-foreground opacity-0 transition-opacity group-hover:opacity-100"
+              @click="emit('removeFile', f.id)"
             >
               <X class="size-3" />
             </button>
@@ -715,6 +793,14 @@ onUnmounted(() => {
               class="hidden"
               @change="handleFilesSelected"
             />
+            <input
+              ref="docFileInputRef"
+              type="file"
+              accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.md,.json,.xml,.html,.rtf,.log"
+              multiple
+              class="hidden"
+              @change="handleDocFilesSelected"
+            />
 
             <!-- Knowledge base select: same slot for personal (multi-select) and team (single from current category); position unchanged -->
             <SelectRoot
@@ -880,7 +966,28 @@ onUnmounted(() => {
               </Button>
             </template>
 
-            <!-- Image selection button (not supported in team mode).
+            <!-- File upload button (non-snap mode) -->
+            <TooltipProvider v-if="!isTeamMode && !isSnapMode">
+              <Tooltip>
+                <TooltipTrigger as-child>
+                  <span class="inline-flex">
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      class="size-8 rounded-full border border-border bg-background hover:bg-muted/40"
+                      @click="handleSelectFilesClick"
+                    >
+                      <File class="size-4 text-muted-foreground" />
+                    </Button>
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>{{ t('assistant.chat.uploadFile') }}</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+
+            <!-- Image selection button (non-snap mode).
                  在窗口较宽时直接展示图标；在 snap 模式下收纳到“更多”菜单中。 -->
             <TooltipProvider v-if="!isTeamMode && !isSnapMode">
               <Tooltip>
@@ -915,7 +1022,7 @@ onUnmounted(() => {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start" class="w-40 rounded-[6px] shadow-[0_6px_30px_rgba(0,0,0,0.05),0_16px_24px_rgba(0,0,0,0.04),0_8px_10px_rgba(0,0,0,0.08)]">
-                <DropdownMenuItem class="gap-2" @select="() => toast.default('Upload file coming soon')">
+                <DropdownMenuItem class="gap-2" @select="handleSelectFilesClick">
                   <File class="size-4 text-muted-foreground" />
                   <span class="text-xs text-foreground">{{ t('assistant.chat.uploadFile') }}</span>
                 </DropdownMenuItem>

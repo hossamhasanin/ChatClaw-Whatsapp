@@ -298,6 +298,17 @@ interface PendingImage {
 }
 const pendingImages = ref<PendingImage[]>([])
 
+// Pending files for message
+interface PendingFile {
+  id: string
+  file: File
+  mimeType: string
+  base64: string
+  fileName: string
+  size: number
+}
+const pendingFiles = ref<PendingFile[]>([])
+
 // Computed
 const activeAgent = computed(() => {
   if (activeAgentId.value == null) return null
@@ -329,7 +340,7 @@ const chatMessages = computed(() => {
 })
 
 const canSend = computed(() => {
-  const hasContent = chatInput.value.trim() !== '' || pendingImages.value.length > 0
+  const hasContent = chatInput.value.trim() !== '' || pendingImages.value.length > 0 || pendingFiles.value.length > 0
   if (isTeamMode.value) {
     return !!activeTeamRobotId.value && chatInput.value.trim() !== '' && !isGenerating.value
   }
@@ -352,7 +363,7 @@ const sendDisabledReason = computed(() => {
   }
   if (!activeAgentId.value) return t('assistant.placeholders.createAgentFirst')
   if (!selectedModelKey.value) return t('assistant.placeholders.selectModelFirst')
-  const hasContent = chatInput.value.trim() !== '' || pendingImages.value.length > 0
+  const hasContent = chatInput.value.trim() !== '' || pendingImages.value.length > 0 || pendingFiles.value.length > 0
   if (!hasContent) return t('assistant.placeholders.enterToSend')
   return ''
 })
@@ -463,6 +474,7 @@ const handleNewConversation = () => {
   activeConversationId.value = null
   chatInput.value = ''
   pendingImages.value = []
+  pendingFiles.value = []
   // Clear knowledge base selection for new conversation
   clearKnowledgeSelection()
   // Reset thinking mode to default (off) for new conversation
@@ -478,6 +490,7 @@ const handleListModeChange = (mode: ListMode) => {
     chatMode.value = 'chat'
     enableThinking.value = false
     pendingImages.value = []
+    pendingFiles.value = []
     clearKnowledgeSelection()
     void (async () => {
       await loadTeamRobots()
@@ -539,6 +552,7 @@ const handleNewConversationForTeamRobot = (robotId: string) => {
   activeTeamConversationId.value = null
   chatInput.value = ''
   pendingImages.value = []
+  pendingFiles.value = []
 }
 
 // Snap header: new conversation (after switching agent or team robot in dropdown)
@@ -757,8 +771,10 @@ const handleSend = async () => {
 
   const messageContent = chatInput.value.trim()
   const imagesToSend = [...pendingImages.value]
+  const filesToSend = [...pendingFiles.value]
   chatInput.value = ''
   pendingImages.value = []
+  pendingFiles.value = []
 
   if (isTeamMode.value) {
     try {
@@ -780,8 +796,8 @@ const handleSend = async () => {
       await createConversation(
         new CreateConversationInput({
           agent_id: activeAgentId.value,
-          name: messageContent.slice(0, 50) || (imagesToSend.length > 0 ? t('assistant.imageMessage') : ''), // First message becomes conversation name (truncated)
-          last_message: messageContent || (imagesToSend.length > 0 ? t('assistant.imageMessage') : ''),
+          name: messageContent.slice(0, 50) || (imagesToSend.length > 0 ? t('assistant.imageMessage') : filesToSend.length > 0 ? t('assistant.chat.fileMessage') : ''),
+          last_message: messageContent || (imagesToSend.length > 0 ? t('assistant.imageMessage') : filesToSend.length > 0 ? t('assistant.chat.fileMessage') : ''),
           llm_provider_id: providerId || '',
           llm_model_id: modelId || '',
           library_ids: selectedLibraryIds.value,
@@ -813,14 +829,14 @@ const handleSend = async () => {
         handleConversationUpdated(updated)
       }
 
-      await chatStore.sendMessage(activeConversationId.value, messageContent, props.tabId, imagesToSend)
+      await chatStore.sendMessage(activeConversationId.value, messageContent, props.tabId, imagesToSend, filesToSend)
 
       // Update conversation's last_message
       try {
         const updated2 = await ConversationsService.UpdateConversation(
           activeConversationId.value,
           new UpdateConversationInput({
-            last_message: messageContent || (imagesToSend.length > 0 ? t('assistant.imageMessage') : ''),
+            last_message: messageContent || (imagesToSend.length > 0 ? t('assistant.imageMessage') : filesToSend.length > 0 ? t('assistant.chat.fileMessage') : ''),
           })
         )
         if (updated2) {
@@ -936,6 +952,73 @@ const handleAddImages = async (files: FileList | File[]) => {
 
 const handleRemoveImage = (id: string) => {
   pendingImages.value = pendingImages.value.filter((img) => img.id !== id)
+}
+
+const ALLOWED_FILE_EXTENSIONS = [
+  '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx',
+  '.txt', '.csv', '.md', '.json', '.xml', '.html', '.rtf', '.log',
+]
+const MAX_FILE_SIZE = 20 * 1024 * 1024 // 20MB
+const MAX_FILES = 4
+
+const handleAddFiles = async (files: FileList | File[]) => {
+  if (isTeamMode.value) {
+    toast.error(t('assistant.errors.teamImageNotSupported'))
+    return
+  }
+
+  const fileArray = Array.from(files)
+  const currentCount = pendingFiles.value.length
+
+  if (currentCount + fileArray.length > MAX_FILES) {
+    toast.error(t('assistant.errors.tooManyFiles', { max: MAX_FILES }))
+    return
+  }
+
+  for (const file of fileArray) {
+    const ext = '.' + file.name.split('.').pop()?.toLowerCase()
+    if (!ALLOWED_FILE_EXTENSIONS.includes(ext)) {
+      toast.error(t('assistant.errors.invalidFileType'))
+      continue
+    }
+    if (file.size > MAX_FILE_SIZE) {
+      toast.error(t('assistant.errors.fileTooLarge', { max: '20MB' }))
+      continue
+    }
+
+    try {
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onload = () => {
+          const dataUrl = reader.result as string
+          const base64Match = dataUrl.match(/^data:[^;]+;base64,(.+)$/)
+          if (base64Match) {
+            resolve(base64Match[1])
+          } else {
+            reject(new Error('Invalid file data'))
+          }
+        }
+        reader.onerror = reject
+        reader.readAsDataURL(file)
+      })
+
+      pendingFiles.value.push({
+        id: `${Date.now()}-${Math.random()}`,
+        file,
+        mimeType: file.type || 'application/octet-stream',
+        base64,
+        fileName: file.name,
+        size: file.size,
+      })
+    } catch (error) {
+      console.error('Failed to read file:', error)
+      toast.error(t('assistant.errors.fileReadFailed'))
+    }
+  }
+}
+
+const handleRemoveFile = (id: string) => {
+  pendingFiles.value = pendingFiles.value.filter((f) => f.id !== id)
 }
 
 // Save thinking mode to current conversation
@@ -1848,6 +1931,7 @@ onUnmounted(() => {
         :is-snap-mode="isSnapMode"
         :is-team-mode="listMode === 'team'"
         :pending-images="pendingImages"
+        :pending-files="pendingFiles"
         @pointerdown.capture="handleWakeAttachedPointerDown"
         @update:chat-input="chatInput = $event"
         @update:chat-mode="chatMode = $event"
@@ -1864,6 +1948,9 @@ onUnmounted(() => {
         @add-images="handleAddImages"
         @remove-image="handleRemoveImage"
         @clear-images="pendingImages = []"
+        @add-files="handleAddFiles"
+        @remove-file="handleRemoveFile"
+        @clear-files="pendingFiles = []"
         @new-conversation="handleNewConversation"
       />
     </section>
@@ -1909,6 +1996,7 @@ onUnmounted(() => {
       :is-snap-mode="isSnapMode"
       :is-team-mode="listMode === 'team'"
       :pending-images="pendingImages"
+      :pending-files="pendingFiles"
       @pointerdown.capture="handleWakeAttachedPointerDown"
       @update:chat-input="chatInput = $event"
       @update:chat-mode="chatMode = $event"
@@ -1925,6 +2013,9 @@ onUnmounted(() => {
       @add-images="handleAddImages"
       @remove-image="handleRemoveImage"
       @clear-images="pendingImages = []"
+      @add-files="handleAddFiles"
+      @remove-file="handleRemoveFile"
+      @clear-files="pendingFiles = []"
       @new-conversation="handleSnapNewConversation"
     />
     </div><!-- End main content wrapper -->
