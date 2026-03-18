@@ -253,16 +253,6 @@ func (s *ProvidersService) GetProvider(providerID string) (*Provider, error) {
 	if providerID == "" {
 		return nil, errs.New("error.provider_id_required")
 	}
-	if s.app != nil {
-		s.app.Logger.Info("[providers] GetProvider start", "provider_id", providerID)
-	}
-	if providerID == "chatwiki" && s.app != nil {
-		if err := chatwiki.NewChatWikiService(s.app).SyncProviderState(); err != nil {
-			s.app.Logger.Warn("[providers] GetProvider chatwiki sync state failed", "provider_id", providerID, "error", err)
-		} else {
-			s.app.Logger.Info("[providers] GetProvider chatwiki sync state ok", "provider_id", providerID)
-		}
-	}
 
 	db, err := s.db()
 	if err != nil {
@@ -285,28 +275,13 @@ func (s *ProvidersService) GetProvider(providerID string) (*Provider, error) {
 		return nil, errs.Wrap("error.provider_read_failed", err)
 	}
 	dto := m.toDTO()
-	if s.app != nil {
-		s.app.Logger.Info("[providers] GetProvider done",
-			"provider_id", providerID,
-			"type", dto.Type,
-			"enabled", dto.Enabled,
-			"api_endpoint", dto.APIEndpoint,
-			"api_key_len", len(strings.TrimSpace(dto.APIKey)),
-		)
-	}
 	return &dto, nil
 }
 
 // GetProviderWithModels 获取供应商及其模型列表（含 ChatClaw 在内，一律从本地 DB 读取；ChatClaw 免费模型在应用启动时由 SyncChatClawModels 同步一次）
 func (s *ProvidersService) GetProviderWithModels(providerID string) (*ProviderWithModels, error) {
-	if s.app != nil {
-		s.app.Logger.Info("[providers] GetProviderWithModels start", "provider_id", providerID)
-	}
 	provider, err := s.GetProvider(providerID)
 	if err != nil {
-		if s.app != nil {
-			s.app.Logger.Error("[providers] GetProviderWithModels get provider failed", "provider_id", providerID, "error", err)
-		}
 		return nil, err
 	}
 	if providerID == "chatwiki" {
@@ -334,9 +309,6 @@ func (s *ProvidersService) GetProviderWithModels(providerID string) (*ProviderWi
 		OrderExpr("type ASC, sort_order ASC, id ASC").
 		Scan(ctx)
 	if err != nil {
-		if s.app != nil {
-			s.app.Logger.Error("[providers] GetProviderWithModels list models failed", "provider_id", providerID, "error", err)
-		}
 		return nil, errs.Wrap("error.model_list_failed", err)
 	}
 

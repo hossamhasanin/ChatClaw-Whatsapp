@@ -558,7 +558,6 @@ export default {
       modelBoundHint: "This list shows the models currently available to the bound ChatWiki account.",
       modelUnboundHint: "Sign in first to load the available model list for the current binding.",
       modelLoginHint: "Please sign in and bind your ChatWiki account first. The latest model list will appear here afterward.",
-      freeVersion: "Free",
     },
     tools: {
       tray: {

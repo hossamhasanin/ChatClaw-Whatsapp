@@ -133,15 +133,6 @@ func (s *ChatService) getAgentAndProviderConfig(ctx context.Context, db *bun.DB,
 	if !provider.Enabled {
 		return einoagent.Config{}, einoagent.ProviderConfig{}, AgentExtras{}, errs.New("error.chat_provider_not_enabled")
 	}
-	s.app.Logger.Info("[chat] resolved provider config",
-		"conv", conversationID,
-		"provider_id", providerID,
-		"model_id", modelID,
-		"provider_type", provider.Type,
-		"provider_enabled", provider.Enabled,
-		"api_endpoint", provider.APIEndpoint,
-		"api_key_len", len(strings.TrimSpace(provider.APIKey)),
-	)
 
 	instruction := fmt.Sprintf("# System Instruction\n\n%s", strings.TrimSpace(agent.Prompt))
 
