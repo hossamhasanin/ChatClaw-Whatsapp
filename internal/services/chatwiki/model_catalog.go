@@ -70,8 +70,8 @@ func previewChatWikiLogBody(raw []byte) string {
 	return trimmed
 }
 
-func chatWikiOpenAIBaseURL(serverURL string) string {
-	baseURL := strings.TrimRight(strings.TrimSpace(serverURL), "/")
+func chatWikiOpenAIBaseURL(_ string) string {
+	baseURL := strings.TrimRight(strings.TrimSpace(define.GetModelChatWikiURL()), "/")
 	if baseURL == "" {
 		return ""
 	}
