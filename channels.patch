@@ -1,0 +1,199 @@
+diff --git a/frontend/src/pages/channels/ChannelsPage.vue b/frontend/src/pages/channels/ChannelsPage.vue
+index 341dba1..a5993ed 100644
+--- a/frontend/src/pages/channels/ChannelsPage.vue
++++ b/frontend/src/pages/channels/ChannelsPage.vue
+@@ -1,5 +1,5 @@
+ <script setup lang="ts">
+-import { onMounted, ref, computed, watch } from 'vue'
++import { onMounted, onUnmounted, ref, computed, watch } from 'vue'
+ import { useI18n } from 'vue-i18n'
+ import {
+   Plus,
+@@ -23,7 +23,8 @@ import { Switch } from '@/components/ui/switch'
+ import { Input } from '@/components/ui/input'
+ import { toast } from '@/components/ui/toast'
+ import { getErrorMessage } from '@/composables/useErrorMessage'
+-import { Dialogs } from '@wailsio/runtime'
++import { Dialogs, Events } from '@wailsio/runtime'
++import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+ import {
+   AlertDialog,
+   AlertDialogAction,
+@@ -57,13 +58,14 @@ defineProps<{ tabId: string }>()
+ 
+ const { t, te } = useI18n()
+ 
+-/** Platforms that support add/filter in UI (feishu + wecom + dingtalk + qq). */
++/** Platforms that support add/filter in UI. */
+ function isChannelPlatformSelectable(platformId: string) {
+   return (
+     platformId === 'feishu' ||
+     platformId === 'wecom' ||
+     platformId === 'dingtalk' ||
+-    platformId === 'qq'
++    platformId === 'qq' ||
++    platformId === 'whatsapp'
+   )
+ }
+ 
+@@ -83,10 +85,17 @@ const channelToBind = ref<Channel | null>(null)
+ /** True when bind dialog was opened right after creating a channel (show auto-generate option) */
+ const bindFromCreate = ref(false)
+ const toggleDialogOpen = ref(false)
+-const channelToToggle = ref<{ channel: Channel, val: boolean } | null>(null)
++const channelToToggle = ref<{ channel: Channel; val: boolean } | null>(null)
+ const unbindDialogOpen = ref(false)
+ const channelToUnbind = ref<Channel | null>(null)
+ 
++// WhatsApp QR auth state
++const qrDialogOpen = ref(false)
++const qrCodeImage = ref('')
++
++let qrUnsubscribe: (() => void) | null = null
++let connectedUnsubscribe: (() => void) | null = null
++
+ watch(unbindDialogOpen, (open) => {
+   if (!open) channelToUnbind.value = null
+ })
+@@ -112,6 +121,12 @@ const selectedPlatformMeta = computed(() => {
+ })
+ 
+ const isInlineWeCom = computed(() => selectedPlatformMeta.value?.id === 'wecom')
++const isInlineQrCodeAuth = computed(() => {
++  return (
++    selectedPlatformMeta.value?.auth_type === 'qrcode' ||
++    selectedPlatformMeta.value?.id === 'whatsapp'
++  )
++})
+ const inlineAppIdLabel = computed(() =>
+   isInlineWeCom.value ? t('channels.config.wecomBotId') : t('channels.config.appId')
+ )
+@@ -131,6 +146,7 @@ const inlineAppSecretPlaceholder = computed(() =>
+ 
+ const isInlineFormValid = computed(() => {
+   if (!inlineFormName.value.trim()) return false
++  if (isInlineQrCodeAuth.value) return true
+   return !!(inlineFormAppId.value.trim() && inlineFormAppSecret.value.trim())
+ })
+ 
+@@ -361,10 +377,13 @@ async function handleInlineSave() {
+ 
+   inlineFormSaving.value = true
+   try {
+-    const extraConfig = JSON.stringify({
+-      app_id: inlineFormAppId.value.trim(),
+-      app_secret: inlineFormAppSecret.value.trim(),
+-    })
++    let extraConfig = ''
++    if (!isInlineQrCodeAuth.value) {
++      extraConfig = JSON.stringify({
++        app_id: inlineFormAppId.value.trim(),
++        app_secret: inlineFormAppSecret.value.trim(),
++      })
++    }
+ 
+     const channel = await ChannelService.CreateChannel({
+       platform: selectedPlatformMeta.value.id,
+@@ -424,7 +443,30 @@ function getAppId(extraConfig: string): string {
+   }
+ }
+ 
+-onMounted(loadData)
++onMounted(() => {
++  loadData()
++
++  // Listen for WhatsApp QR code event
++  qrUnsubscribe = Events.On('channel:whatsapp:qr', (event) => {
++    if (event && event.data && event.data.qr_code) {
++      qrCodeImage.value = event.data.qr_code as string
++      qrDialogOpen.value = true
++    }
++  })
++
++  // Listen for WhatsApp connected event
++  connectedUnsubscribe = Events.On('channel:whatsapp:connected', (event) => {
++    qrDialogOpen.value = false
++    qrCodeImage.value = ''
++    toast.success(t('channels.whatsapp.connected', 'WhatsApp connected successfully!'))
++    loadData()
++  })
++})
++
++onUnmounted(() => {
++  if (qrUnsubscribe) qrUnsubscribe()
++  if (connectedUnsubscribe) connectedUnsubscribe()
++})
+ </script>
+ 
+ <template>
+@@ -618,9 +660,11 @@ onMounted(loadData)
+                         : t('channels.card.switchBind')
+                     }}
+                   </DropdownMenuItem>
+-                  <DropdownMenuItem class="gap-2 rounded px-4 py-[5px]" 
+-                      @click="openUnbindConfirm(channel)" 
+-                      :disabled="channel.agent_id === 0">
++                  <DropdownMenuItem
++                    class="gap-2 rounded px-4 py-[5px]"
++                    :disabled="channel.agent_id === 0"
++                    @click="openUnbindConfirm(channel)"
++                  >
+                     <Unlink class="h-4 w-4" />
+                     {{ t('channels.card.unbind') }}
+                   </DropdownMenuItem>
+@@ -782,7 +826,7 @@ onMounted(loadData)
+           </div>
+ 
+           <!-- * APPID: 260px -->
+-          <div class="flex w-[260px] shrink-0 flex-col gap-1">
++          <div v-if="!isInlineQrCodeAuth" class="flex w-[260px] shrink-0 flex-col gap-1">
+             <label
+               class="flex items-center gap-1 text-sm font-medium leading-5 text-[#0a0a0a] dark:text-foreground"
+             >
+@@ -798,7 +842,7 @@ onMounted(loadData)
+           </div>
+ 
+           <!-- * APP Secret: 260px -->
+-          <div class="flex w-[260px] shrink-0 flex-col gap-1">
++          <div v-if="!isInlineQrCodeAuth" class="flex w-[260px] shrink-0 flex-col gap-1">
+             <label
+               class="flex items-center gap-1 text-sm font-medium leading-5 text-[#0a0a0a] dark:text-foreground"
+             >
+@@ -818,6 +862,7 @@ onMounted(loadData)
+         <!-- Button row: 验证配置 | 保存添加 | 配置步骤, gap 12px -->
+         <div class="flex items-center gap-3">
+           <Button
++            v-if="!isInlineQrCodeAuth"
+             type="button"
+             class="h-10 gap-2 bg-[#f5f5f5] px-6 text-[#171717] hover:bg-[#e5e5e5] dark:bg-muted dark:text-foreground dark:hover:bg-muted/80"
+             :disabled="inlineFormSaving || inlineFormVerifying || !isInlineFormValid"
+@@ -956,5 +1001,29 @@ onMounted(loadData)
+         </AlertDialogFooter>
+       </AlertDialogContent>
+     </AlertDialog>
++
++    <!-- WhatsApp QR Code Dialog -->
++    <Dialog v-model:open="qrDialogOpen">
++      <DialogContent class="sm:max-w-[400px]">
++        <DialogHeader>
++          <DialogTitle>{{ t('channels.whatsapp.scanQr', 'Scan WhatsApp QR Code') }}</DialogTitle>
++        </DialogHeader>
++        <div class="flex flex-col items-center justify-center p-6">
++          <img
++            v-if="qrCodeImage"
++            :src="qrCodeImage"
++            class="h-64 w-64 object-contain mb-4 border border-border rounded-lg"
++          />
++          <p class="text-sm text-center text-muted-foreground">
++            {{
++              t(
++                'channels.whatsapp.scanQrDesc',
++                'Open WhatsApp on your phone and scan this QR code to link your account.'
++              )
++            }}
++          </p>
++        </div>
++      </DialogContent>
++    </Dialog>
+   </div>
+ </template>

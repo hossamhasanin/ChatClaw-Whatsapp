@@ -239,61 +239,12 @@ func cloneModelCatalog(in *ModelCatalog) *ModelCatalog {
 }
 
 func (s *ChatWikiService) fetchModelCatalog(source modelCatalogSource) (*ModelCatalog, error) {
-	baseURL := normalizeManagementBaseURL(source.ServerURL)
-	modelURL := baseURL + "/manage/chatclaw/showModelConfigList"
-	statsURL := baseURL + "/manage/chatclaw/getIntegralStats"
-	s.app.Logger.Info("[chatwiki] fetchModelCatalog request start",
-		"server_url", baseURL,
-		"model_url", modelURL,
-		"stats_url", statsURL,
-		"token_len", len(strings.TrimSpace(source.Token)),
-		"user_id", source.UserID,
-		"bound", source.Bound,
-	)
-
-	modelBody, err := s.chatWikiGETLoose(source.Token, modelURL)
-	if err != nil {
-		s.app.Logger.Error("[chatwiki] fetchModelCatalog model request failed", "url", modelURL, "error", err)
-		return nil, err
-	}
-	s.app.Logger.Info("[chatwiki] fetchModelCatalog model response",
-		"url", modelURL,
-		"body_len", len(modelBody),
-		"body_preview", previewChatWikiLogBody(modelBody),
-	)
-	catalog, err := decodeModelCatalogResponse(modelBody)
-	if err != nil {
-		s.app.Logger.Error("[chatwiki] fetchModelCatalog decode failed", "url", modelURL, "error", err)
-		return nil, err
-	}
-	if err := syncModelCatalogToLocalDB(catalog); err != nil {
-		s.app.Logger.Error("[chatwiki] fetchModelCatalog sync db failed", "url", modelURL, "error", err)
-		return nil, err
-	}
-	s.app.Logger.Info("[chatwiki] fetchModelCatalog decoded",
-		"llm_count", len(catalog.LLMModels),
-		"embedding_count", len(catalog.EmbeddingModels),
-		"rerank_count", len(catalog.RerankModels),
-	)
-
-	if source.Bound && source.Cloud {
-		statsBody, statsErr := s.chatWikiGETLoose(source.Token, statsURL)
-		if statsErr == nil {
-			catalog.IntegralStats = &IntegralStats{Raw: append(json.RawMessage(nil), statsBody...)}
-			s.app.Logger.Info("[chatwiki] fetchModelCatalog stats response",
-				"url", statsURL,
-				"body_len", len(statsBody),
-				"body_preview", previewChatWikiLogBody(statsBody),
-			)
-		} else {
-			s.app.Logger.Warn("[chatwiki] fetchModelCatalog stats request failed", "url", statsURL, "error", statsErr)
-		}
-	}
-
-	catalog.Bound = source.Bound
-	catalog.BindingUserID = source.UserID
-	catalog.LoadedAtUnix = time.Now().Unix()
-	return catalog, nil
+	// Disable external request to chatwiki endpoints for fetching models.
+	return &ModelCatalog{
+		Bound:         source.Bound,
+		BindingUserID: source.UserID,
+		LoadedAtUnix:  time.Now().Unix(),
+	}, nil
 }
 
 func decodeModelCatalogResponse(raw json.RawMessage) (*ModelCatalog, error) {

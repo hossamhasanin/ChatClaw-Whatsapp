@@ -32,32 +32,35 @@ const settingsStore = useSettingsStore()
 // 菜单项对应的翻译 key
 const menuLabelKeys: Record<SettingsMenuItem, string> = {
   modelService: 'settings.menu.modelService',
+  chatwiki: 'settings.menu.chatwiki',
   generalSettings: 'settings.menu.generalSettings',
   memorySettings: 'settings.menu.memorySettings',
   skills: 'settings.menu.skills',
   mcp: 'settings.menu.mcp',
   snapSettings: 'settings.menu.snapSettings',
   tools: 'settings.menu.tools',
-  chatwiki: 'settings.menu.chatwiki',
   about: 'settings.menu.about',
 }
 
 // 菜单项对应的内容组件（null 表示尚未实现）
 const menuComponents: Record<SettingsMenuItem, Component | null> = {
   modelService: ModelServiceSettings,
+  chatwiki: ChatwikiSettings,
   generalSettings: GeneralSettings,
   memorySettings: MemorySettings,
   skills: SkillsSettings,
   mcp: MCPSettings,
   snapSettings: SnapSettings,
   tools: ToolsSettings,
-  chatwiki: ChatwikiSettings,
   about: AboutSettings,
 }
 
 // 是否为全宽组件（不需要居中包装）
 const isFullWidthComponent = computed(
-  () => settingsStore.activeMenu === 'modelService' || settingsStore.activeMenu === 'mcp'
+  () =>
+    settingsStore.activeMenu === 'modelService' ||
+    settingsStore.activeMenu === 'mcp' ||
+    settingsStore.activeMenu === 'chatwiki'
 )
 
 // 获取当前菜单的翻译文本

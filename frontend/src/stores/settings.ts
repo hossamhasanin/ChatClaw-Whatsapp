@@ -6,13 +6,13 @@ import { defineStore } from 'pinia'
  */
 export type SettingsMenuItem =
   | 'modelService'
+  | 'chatwiki'
   | 'generalSettings'
   | 'memorySettings'
   | 'skills'
   | 'mcp'
   | 'snapSettings'
   | 'tools'
-  | 'chatwiki'
   | 'about'
 
 export type PendingChatwikiAction = 'cloudLogin'

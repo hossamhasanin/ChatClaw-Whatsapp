@@ -2,7 +2,11 @@
 <img src="./frontend/src/assets/images/logo-floatingball.png" width="150" height="150">
 </p>
 
-<h1 align="center">ChatClaw</h1>
+<h1 align="center">ChatClaw (WhatsApp Fork)</h1>
+
+<p align="center">
+  <strong>This project is a fork of <a href="https://github.com/zhimaAi/ChatClaw">ChatClaw</a>. We have removed the proprietary ChatWiki backend dependencies for a fully local experience and added native integration with `whatsmeow` for WhatsApp support.</strong>
+</p>
 
 <p align="center">
   <strong>Get OpenClaw-like personal AI agent in 5 mins. with Sandbox security,small and fast</strong>

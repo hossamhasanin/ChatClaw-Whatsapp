@@ -95,6 +95,7 @@ func (s *ChannelService) GetSupportedPlatforms() []PlatformMeta {
 		{ID: PlatformWeCom, Name: "WeCom", AuthType: "token"},
 		{ID: PlatformQQ, Name: "QQ", AuthType: "token"},
 		{ID: PlatformTwitter, Name: "X (Twitter)", AuthType: "token"},
+		{ID: PlatformWhatsApp, Name: "WhatsApp", AuthType: "qrcode"},
 	}
 	return allPlatforms
 }

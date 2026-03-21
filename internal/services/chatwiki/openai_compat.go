@@ -1,11 +1,7 @@
 package chatwiki
 
 import (
-	"context"
-	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"strings"
 	"sync"
 	"time"
@@ -49,55 +45,10 @@ func ResolveSelfOwnedModelConfigID(apiKey, apiEndpoint, modelID, modelType strin
 }
 
 func loadModelCatalogForOpenAI(apiKey, apiEndpoint string) (*ModelCatalog, error) {
-	baseURL := normalizeManagementBaseURL(apiEndpoint)
-	if baseURL == "" {
-		return nil, fmt.Errorf("invalid chatwiki api endpoint: %q", apiEndpoint)
-	}
-
-	cacheKey := strings.TrimSpace(apiKey) + "|" + baseURL
-	if cached, ok := openAIModelCatalogCache.Load(cacheKey); ok {
-		entry := cached.(cachedOpenAIModelCatalog)
-		if time.Now().Before(entry.expiresAt) && entry.catalog != nil {
-			return cloneModelCatalog(entry.catalog), nil
-		}
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	defer cancel()
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, baseURL+"/manage/chatclaw/showModelConfigList", nil)
-	if err != nil {
-		return nil, fmt.Errorf("create chatwiki model catalog request: %w", err)
-	}
-	req.Header.Set("Token", strings.TrimSpace(apiKey))
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("request chatwiki model catalog: %w", err)
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("read chatwiki model catalog: %w", err)
-	}
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("chatwiki model catalog status=%d body=%s", resp.StatusCode, previewChatWikiLogBody(body))
-	}
-
-	catalog, err := decodeModelCatalogResponse(json.RawMessage(body))
-	if err != nil {
-		return nil, fmt.Errorf("decode chatwiki model catalog: %w", err)
-	}
-	if err := syncModelCatalogToLocalDB(catalog); err != nil {
-		return nil, fmt.Errorf("sync chatwiki model catalog to db: %w", err)
-	}
-
-	openAIModelCatalogCache.Store(cacheKey, cachedOpenAIModelCatalog{
-		catalog:   cloneModelCatalog(catalog),
-		expiresAt: time.Now().Add(chatWikiModelCatalogCacheTTL),
-	})
-	return cloneModelCatalog(catalog), nil
+	// Disable external request to chatwiki endpoints for fetching models.
+	return &ModelCatalog{
+		LoadedAtUnix: time.Now().Unix(),
+	}, nil
 }
 
 func normalizeManagementBaseURL(apiEndpoint string) string {
