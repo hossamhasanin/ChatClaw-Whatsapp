@@ -66,11 +66,13 @@ watch(open, (val) => {
 const currentPlatformId = computed(() => props.platform?.id || props.channel?.platform)
 
 const isWeCom = computed(() => currentPlatformId.value === 'wecom')
+const isQrCodeAuth = computed(() => {
+  if (props.platform?.auth_type === 'qrcode') return true
+  if (currentPlatformId.value === 'whatsapp') return true
+  return false
+})
 
-const PLATFORM_TIP_ENTRIES: Record<
-  string,
-  { platformUrl: string }
-> = {
+const PLATFORM_TIP_ENTRIES: Record<string, { platformUrl: string }> = {
   feishu: { platformUrl: 'https://open.feishu.cn/' },
   dingtalk: { platformUrl: 'https://open.dingtalk.com/' },
   qq: { platformUrl: 'https://q.qq.com/#/' },
@@ -119,6 +121,7 @@ const dialogTitle = computed(() => {
 
 const isFormValid = computed(() => {
   if (!name.value.trim()) return false
+  if (isQrCodeAuth.value) return true
   return !!(appId.value.trim() && appSecret.value.trim())
 })
 
@@ -303,7 +306,7 @@ async function handleOpenExternalLink(url: string) {
           />
         </div>
 
-        <div class="mt-4 space-y-1">
+        <div v-if="!isQrCodeAuth" class="mt-4 space-y-1">
           <Label
             for="app-id"
             class="flex items-center gap-1 text-sm font-medium text-[#0a0a0a] dark:text-foreground"
@@ -313,7 +316,7 @@ async function handleOpenExternalLink(url: string) {
           </Label>
           <Input id="app-id" v-model="appId" :placeholder="appIdPlaceholder" maxlength="60" />
         </div>
-        <div class="mt-4 space-y-1">
+        <div v-if="!isQrCodeAuth" class="mt-4 space-y-1">
           <Label
             for="app-secret"
             class="flex items-center gap-1 text-sm font-medium text-[#0a0a0a] dark:text-foreground"
@@ -332,6 +335,7 @@ async function handleOpenExternalLink(url: string) {
 
         <DialogFooter class="mt-6 pt-4">
           <Button
+            v-if="!isQrCodeAuth"
             type="button"
             variant="outline"
             class="gap-2 bg-[#f5f5f5] text-[#171717] hover:bg-[#e5e5e5] dark:bg-muted dark:text-foreground dark:hover:bg-muted/80"

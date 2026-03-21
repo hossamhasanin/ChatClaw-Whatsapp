@@ -48,7 +48,7 @@ const { t, te } = useI18n()
 
 /** Platforms that support create/bind in UI (feishu + wecom + dingtalk). */
 function isChannelPlatformSelectable(platformId: string) {
-  return platformId === 'feishu' || platformId === 'wecom' || platformId === 'dingtalk'
+  return platformId === 'feishu' || platformId === 'wecom' || platformId === 'dingtalk' || platformId === 'qq' || platformId === 'whatsapp'
 }
 
 const channels = ref<Channel[]>([])
@@ -211,7 +211,7 @@ async function loadData() {
     platforms.value = platformList || []
     agents.value = agentList || []
 
-    const selectableIds = ['feishu', 'wecom', 'dingtalk', 'qq']
+    const selectableIds = ['feishu', 'wecom', 'dingtalk', 'qq', 'whatsapp']
     const hasSelectedPlatform = platforms.value.some(
       (platform) => platform.id === selectedPlatformId.value
     )
@@ -363,7 +363,8 @@ function isSelectableChannelPlatform(platformId: string) {
     platformId === 'feishu' ||
     platformId === 'wecom' ||
     platformId === 'dingtalk' ||
-    platformId === 'qq'
+    platformId === 'qq' ||
+    platformId === 'whatsapp'
   )
 }
 

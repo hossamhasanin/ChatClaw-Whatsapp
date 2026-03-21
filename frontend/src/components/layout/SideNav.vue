@@ -130,12 +130,7 @@ const handleNavClick = (module: NavModule) => {
         :title="navigationStore.sidebarCollapsed ? t(item.labelKey) : undefined"
         @click="handleNavClick(item.key)"
       >
-        <component
-          :is="item.icon"
-          width="16"
-          height="16"
-          class="size-4 shrink-0 opacity-100"
-        />
+        <component :is="item.icon" width="16" height="16" class="size-4 shrink-0 opacity-100" />
         <span v-if="!navigationStore.sidebarCollapsed">{{ t(item.labelKey) }}</span>
       </button>
     </div>
@@ -157,12 +152,7 @@ const handleNavClick = (module: NavModule) => {
         :title="navigationStore.sidebarCollapsed ? t(item.labelKey) : undefined"
         @click="handleNavClick(item.key)"
       >
-        <component
-          :is="item.icon"
-          width="16"
-          height="16"
-          class="size-4 shrink-0 opacity-100"
-        />
+        <component :is="item.icon" width="16" height="16" class="size-4 shrink-0 opacity-100" />
         <span v-if="!navigationStore.sidebarCollapsed">{{ t(item.labelKey) }}</span>
       </button>
     </div>

@@ -290,11 +290,19 @@ function getModelLabel(providerId: string, model: Model): string {
                       chatwikiAvailability
                     )
                   }}</span>
-                  <span v-if="isProviderFree(g)" class="rounded px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground ring-1 ring-border">
+                  <span
+                    v-if="isProviderFree(g)"
+                    class="rounded px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground ring-1 ring-border"
+                  >
                     {{ t('assistant.chat.freeBadge') }}
                   </span>
                 </SelectLabel>
-                <SelectItem v-for="m in g.models" :key="`${g.provider.provider_id}::${m.model_id}`" :value="`${g.provider.provider_id}::${m.model_id}`" :disabled="isModelSelectionDisabled(g.provider.provider_id, chatwikiAvailability)">
+                <SelectItem
+                  v-for="m in g.models"
+                  :key="`${g.provider.provider_id}::${m.model_id}`"
+                  :value="`${g.provider.provider_id}::${m.model_id}`"
+                  :disabled="isModelSelectionDisabled(g.provider.provider_id, chatwikiAvailability)"
+                >
                   {{ getModelLabel(g.provider.provider_id, m) }}
                 </SelectItem>
               </SelectGroup>
@@ -324,11 +332,19 @@ function getModelLabel(providerId: string, model: Model): string {
                       chatwikiAvailability
                     )
                   }}</span>
-                  <span v-if="isProviderFree(g)" class="rounded px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground ring-1 ring-border">
+                  <span
+                    v-if="isProviderFree(g)"
+                    class="rounded px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground ring-1 ring-border"
+                  >
                     {{ t('assistant.chat.freeBadge') }}
                   </span>
                 </SelectLabel>
-                <SelectItem v-for="m in g.models" :key="`${g.provider.provider_id}::${m.model_id}`" :value="`${g.provider.provider_id}::${m.model_id}`" :disabled="isModelSelectionDisabled(g.provider.provider_id, chatwikiAvailability)">
+                <SelectItem
+                  v-for="m in g.models"
+                  :key="`${g.provider.provider_id}::${m.model_id}`"
+                  :value="`${g.provider.provider_id}::${m.model_id}`"
+                  :disabled="isModelSelectionDisabled(g.provider.provider_id, chatwikiAvailability)"
+                >
                   {{ getModelLabel(g.provider.provider_id, m) }}
                 </SelectItem>
               </SelectGroup>

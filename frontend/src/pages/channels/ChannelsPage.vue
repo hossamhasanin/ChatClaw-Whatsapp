@@ -682,7 +682,10 @@ onUnmounted(() => {
           </div>
 
           <!-- Appid -->
-          <p class="text-xs leading-5 text-[#8c8c8c] dark:text-muted-foreground">
+          <p
+            v-if="channel.platform !== 'whatsapp'"
+            class="text-xs leading-5 text-[#8c8c8c] dark:text-muted-foreground"
+          >
             {{ t('channels.card.appId') }}: {{ getAppId(channel.extra_config) }}
           </p>
 
@@ -885,6 +888,7 @@ onUnmounted(() => {
             {{ t('channels.inline.save') }}
           </Button>
           <Button
+            v-if="!isInlineQrCodeAuth"
             variant="outline"
             class="h-10 border-[#d4d4d4] px-6 shadow-[0_1px_2px_0_rgba(0,0,0,0.05)] dark:border-border dark:shadow-none dark:ring-1 dark:ring-white/10"
             @click="openPlatformDocs"
