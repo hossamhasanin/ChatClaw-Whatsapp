@@ -93,6 +93,12 @@ const selectedPlatformChannels = computed(() => {
 const isFeishu = computed(() => selectedPlatformMeta.value?.id === 'feishu')
 const isDingTalk = computed(() => selectedPlatformMeta.value?.id === 'dingtalk')
 const isWeCom = computed(() => selectedPlatformMeta.value?.id === 'wecom')
+const isQrCodeAuth = computed(
+  () =>
+    selectedPlatformMeta.value?.id === 'whatsapp' ||
+    selectedPlatformMeta.value?.auth_type === 'qrcode'
+)
+
 const inlineAppIdLabel = computed(() => (isWeCom.value ? 'Bot ID' : t('channels.config.appId')))
 const inlineAppSecretLabel = computed(() =>
   isWeCom.value ? 'Secret' : t('channels.config.appSecret')
@@ -108,6 +114,7 @@ const inlineAppSecretPlaceholder = computed(() =>
 
 const isInlineFormValid = computed(() => {
   if (!inlineFormName.value.trim()) return false
+  if (isQrCodeAuth.value) return true
   return !!(inlineFormAppId.value.trim() && inlineFormAppSecret.value.trim())
 })
 
@@ -346,6 +353,9 @@ async function handleToggleChannel(channel: Channel, enabled: boolean) {
     if (enabled) {
       await ChannelService.ConnectChannel(channel.id)
       toast.success(t('channels.connect.success'))
+      if (channel.platform === 'whatsapp') {
+        open.value = false
+      }
     } else {
       await ChannelService.DisconnectChannel(channel.id)
       toast.success(t('channels.disconnect.success'))
@@ -592,7 +602,7 @@ async function handleConfigChannelSaved(channel: Channel, isEdit: boolean) {
                       />
                     </div>
 
-                    <div class="flex flex-col gap-1">
+                    <div v-if="!isQrCodeAuth" class="flex flex-col gap-1">
                       <label
                         class="text-sm font-medium leading-5 text-[#0a0a0a] dark:text-foreground"
                       >
@@ -605,7 +615,7 @@ async function handleConfigChannelSaved(channel: Channel, isEdit: boolean) {
                       />
                     </div>
 
-                    <div class="flex flex-col gap-1">
+                    <div v-if="!isQrCodeAuth" class="flex flex-col gap-1">
                       <label
                         class="text-sm font-medium leading-5 text-[#0a0a0a] dark:text-foreground"
                       >
@@ -622,6 +632,7 @@ async function handleConfigChannelSaved(channel: Channel, isEdit: boolean) {
 
                   <div class="mt-4 flex items-center gap-2">
                     <Button
+                      v-if="!isQrCodeAuth"
                       type="button"
                       class="h-10 gap-2 rounded-lg bg-[#f5f5f5] px-6 text-[#171717] hover:bg-[#e5e5e5] dark:bg-muted dark:text-foreground dark:hover:bg-muted/80"
                       :disabled="inlineFormSaving || inlineFormVerifying || !isInlineFormValid"
@@ -692,7 +703,7 @@ async function handleConfigChannelSaved(channel: Channel, isEdit: boolean) {
                         </p>
                       </div>
 
-                      <p class="mt-2 text-xs leading-5 text-[#8c8c8c] dark:text-muted-foreground">
+                      <p v-if="channel.platform !== 'whatsapp'" class="mt-2 text-xs leading-5 text-[#8c8c8c] dark:text-muted-foreground">
                         Appid: {{ getAppId(channel.extra_config) }}
                       </p>
                     </div>
@@ -883,7 +894,7 @@ async function handleConfigChannelSaved(channel: Channel, isEdit: boolean) {
                 <p class="truncate text-sm leading-[22px] text-[#171717] dark:text-foreground">
                   {{ channel.name }}
                 </p>
-                <p class="text-xs leading-5 text-[#8c8c8c] dark:text-muted-foreground">
+                <p v-if="channel.platform !== 'whatsapp'" class="text-xs leading-5 text-[#8c8c8c] dark:text-muted-foreground">
                   Appid: {{ getAppId(channel.extra_config) }}
                 </p>
               </div>

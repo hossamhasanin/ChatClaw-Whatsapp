@@ -39,6 +39,7 @@ type WhatsAppAdapter struct {
 	channelID int64
 	handler   MessageHandler
 	client    *whatsmeow.Client
+	cancel    context.CancelFunc
 }
 
 func (a *WhatsAppAdapter) Platform() string {
@@ -80,9 +81,12 @@ func (a *WhatsAppAdapter) Connect(ctx context.Context, channelID int64, configJS
 	a.client = whatsmeow.NewClient(deviceStore, clientLog)
 	a.client.AddEventHandler(a.eventHandler)
 
+	ctx, cancel := context.WithCancel(context.Background())
+	a.cancel = cancel
+
 	if a.client.Store.ID == nil {
 		// No ID stored, new login
-		qrChan, _ := a.client.GetQRChannel(context.Background())
+		qrChan, _ := a.client.GetQRChannel(ctx)
 		err = a.client.Connect()
 		if err != nil {
 			return fmt.Errorf("failed to connect to WhatsApp: %w", err)
@@ -175,6 +179,10 @@ func (a *WhatsAppAdapter) eventHandler(evt interface{}) {
 
 func (a *WhatsAppAdapter) Disconnect(ctx context.Context) error {
 	a.connected.Store(false)
+	if a.cancel != nil {
+		a.cancel()
+		a.cancel = nil
+	}
 	if a.client != nil {
 		a.client.Disconnect()
 	}

@@ -92,6 +92,24 @@ const channelToUnbind = ref<Channel | null>(null)
 // WhatsApp QR auth state
 const qrDialogOpen = ref(false)
 const qrCodeImage = ref('')
+const qrChannelId = ref<number | null>(null)
+let qrIsConnected = false
+
+watch(qrDialogOpen, async (isOpen) => {
+  if (!isOpen && !qrIsConnected && qrChannelId.value) {
+    try {
+      await ChannelService.UpdateChannel(
+        qrChannelId.value,
+        new UpdateChannelInput({ enabled: false })
+      )
+      await ChannelService.DisconnectChannel(qrChannelId.value)
+      await loadData()
+    } catch (e) {
+      console.error('Failed to disable WhatsApp channel on QR close', e)
+    }
+    qrChannelId.value = null
+  }
+})
 
 let qrUnsubscribe: (() => void) | null = null
 let connectedUnsubscribe: (() => void) | null = null
@@ -450,14 +468,20 @@ onMounted(() => {
   qrUnsubscribe = Events.On('channel:whatsapp:qr', (event) => {
     if (event && event.data && event.data.qr_code) {
       qrCodeImage.value = event.data.qr_code as string
-      qrDialogOpen.value = true
+      qrChannelId.value = event.data.channel_id as number
+      qrIsConnected = false
+      if (!qrDialogOpen.value) {
+        qrDialogOpen.value = true
+      }
     }
   })
 
   // Listen for WhatsApp connected event
   connectedUnsubscribe = Events.On('channel:whatsapp:connected', (event) => {
+    qrIsConnected = true
     qrDialogOpen.value = false
     qrCodeImage.value = ''
+    qrChannelId.value = null
     toast.success(t('channels.whatsapp.connected', 'WhatsApp connected successfully!'))
     loadData()
   })
