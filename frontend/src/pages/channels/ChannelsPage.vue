@@ -89,30 +89,8 @@ const channelToToggle = ref<{ channel: Channel; val: boolean } | null>(null)
 const unbindDialogOpen = ref(false)
 const channelToUnbind = ref<Channel | null>(null)
 
-// WhatsApp QR auth state
-const qrDialogOpen = ref(false)
-const qrCodeImage = ref('')
-const qrChannelId = ref<number | null>(null)
-let qrIsConnected = false
-
-watch(qrDialogOpen, async (isOpen) => {
-  if (!isOpen && !qrIsConnected && qrChannelId.value) {
-    try {
-      await ChannelService.UpdateChannel(
-        qrChannelId.value,
-        new UpdateChannelInput({ enabled: false })
-      )
-      await ChannelService.DisconnectChannel(qrChannelId.value)
-      await loadData()
-    } catch (e) {
-      console.error('Failed to disable WhatsApp channel on QR close', e)
-    }
-    qrChannelId.value = null
-  }
-})
-
-let qrUnsubscribe: (() => void) | null = null
 let connectedUnsubscribe: (() => void) | null = null
+let abortedUnsubscribe: (() => void) | null = null
 
 watch(unbindDialogOpen, (open) => {
   if (!open) channelToUnbind.value = null
@@ -464,31 +442,21 @@ function getAppId(extraConfig: string): string {
 onMounted(() => {
   loadData()
 
-  // Listen for WhatsApp QR code event
-  qrUnsubscribe = Events.On('channel:whatsapp:qr', (event) => {
-    if (event && event.data && event.data.qr_code) {
-      qrCodeImage.value = event.data.qr_code as string
-      qrChannelId.value = event.data.channel_id as number
-      qrIsConnected = false
-      if (!qrDialogOpen.value) {
-        qrDialogOpen.value = true
-      }
-    }
-  })
+
 
   // Listen for WhatsApp connected event
   connectedUnsubscribe = Events.On('channel:whatsapp:connected', (event) => {
-    qrIsConnected = true
-    qrDialogOpen.value = false
-    qrCodeImage.value = ''
-    qrChannelId.value = null
-    toast.success(t('channels.whatsapp.connected', 'WhatsApp connected successfully!'))
+    loadData()
+  })
+
+  // Listen for WhatsApp aborted event
+  abortedUnsubscribe = Events.On('channel:whatsapp:aborted', (event) => {
     loadData()
   })
 })
 
 onUnmounted(() => {
-  if (qrUnsubscribe) qrUnsubscribe()
+  if (abortedUnsubscribe) abortedUnsubscribe()
   if (connectedUnsubscribe) connectedUnsubscribe()
 })
 </script>
@@ -1030,28 +998,5 @@ onUnmounted(() => {
       </AlertDialogContent>
     </AlertDialog>
 
-    <!-- WhatsApp QR Code Dialog -->
-    <Dialog v-model:open="qrDialogOpen">
-      <DialogContent class="sm:max-w-[400px]">
-        <DialogHeader>
-          <DialogTitle>{{ t('channels.whatsapp.scanQr', 'Scan WhatsApp QR Code') }}</DialogTitle>
-        </DialogHeader>
-        <div class="flex flex-col items-center justify-center p-6">
-          <img
-            v-if="qrCodeImage"
-            :src="qrCodeImage"
-            class="h-64 w-64 object-contain mb-4 border border-border rounded-lg"
-          />
-          <p class="text-sm text-center text-muted-foreground">
-            {{
-              t(
-                'channels.whatsapp.scanQrDesc',
-                'Open WhatsApp on your phone and scan this QR code to link your account.'
-              )
-            }}
-          </p>
-        </div>
-      </DialogContent>
-    </Dialog>
   </div>
 </template>

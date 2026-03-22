@@ -23,6 +23,7 @@ const ChannelsPage = defineAsyncComponent(() => import('@/pages/channels/Channel
 import { SnapService } from '@bindings/chatclaw/internal/services/windows'
 import { TextSelectionService } from '@bindings/chatclaw/internal/services/textselection'
 import UpdateDialog from '@/pages/settings/components/UpdateDialog.vue'
+import WhatsAppQrDialog from '@/pages/channels/components/WhatsAppQrDialog.vue'
 import { useI18n } from 'vue-i18n'
 const { t } = useI18n()
 const navigationStore = useNavigationStore()
@@ -453,6 +454,7 @@ onUnmounted(() => {
 
 <template>
   <Toaster />
+  <WhatsAppQrDialog />
 
   <!-- In-app text selection popup (HTML overlay, does not steal focus) -->
   <Teleport to="body">
