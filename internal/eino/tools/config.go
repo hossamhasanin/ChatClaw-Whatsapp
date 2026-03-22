@@ -58,13 +58,13 @@ const (
 	ToolIDMemoryRetriever    = "memory_retriever"
 
 	// Filesystem tool IDs — registered as independent tools, not via filesystem middleware.
-	ToolIDLs        = "ls"
-	ToolIDReadFile  = "read_file"
-	ToolIDWriteFile = "write_file"
-	ToolIDEditFile  = "edit_file"
-	ToolIDPatchFile = "patch_file"
-	ToolIDGlob      = "glob"
-	ToolIDGrep      = "grep"
+	ToolIDLs                = "ls"
+	ToolIDReadFile          = "read_file"
+	ToolIDWriteFile         = "write_file"
+	ToolIDEditFile          = "edit_file"
+	ToolIDPatchFile         = "patch_file"
+	ToolIDGlob              = "glob"
+	ToolIDGrep              = "grep"
 	ToolIDExecute           = "execute"
 	ToolIDExecuteBackground = "execute_background"
 
@@ -72,5 +72,6 @@ const (
 	ToolIDFeishuSender   = "feishu_sender"
 	ToolIDWeComSender    = "wecom_sender"
 	ToolIDDingTalkSender = "dingtalk_sender"
-	ToolIDQQSender     = "qq_sender"
+	ToolIDQQSender       = "qq_sender"
+	ToolIDWhatsAppSender = "whatsapp_sender"
 )

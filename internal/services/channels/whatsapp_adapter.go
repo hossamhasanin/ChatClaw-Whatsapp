@@ -217,3 +217,111 @@ func (a *WhatsAppAdapter) SendMessage(ctx context.Context, targetID string, cont
 	})
 	return err
 }
+
+// SendMedia uploads and sends a media file (image, video, audio, document) to the target ID.
+func (a *WhatsAppAdapter) SendMedia(ctx context.Context, targetID string, filePath string) error {
+	if a.client == nil || !a.client.IsConnected() {
+		return fmt.Errorf("whatsapp client not connected")
+	}
+
+	jid, err := types.ParseJID(targetID)
+	if err != nil {
+		if !strings.Contains(targetID, "@") {
+			jid, err = types.ParseJID(targetID + "@s.whatsapp.net")
+			if err != nil {
+				return err
+			}
+		} else {
+			return err
+		}
+	}
+
+	fileBytes, err := os.ReadFile(filePath)
+	if err != nil {
+		return fmt.Errorf("failed to read file: %w", err)
+	}
+
+	ext := strings.ToLower(filepath.Ext(filePath))
+	var mediaType whatsmeow.MediaType
+	var mimeType string
+
+	switch ext {
+	case ".jpg", ".jpeg":
+		mediaType = whatsmeow.MediaImage
+		mimeType = "image/jpeg"
+	case ".png":
+		mediaType = whatsmeow.MediaImage
+		mimeType = "image/png"
+	case ".webp":
+		mediaType = whatsmeow.MediaImage
+		mimeType = "image/webp"
+	case ".mp4":
+		mediaType = whatsmeow.MediaVideo
+		mimeType = "video/mp4"
+	case ".mp3", ".ogg", ".opus":
+		mediaType = whatsmeow.MediaAudio
+		mimeType = "audio/ogg; codecs=opus"
+	case ".pdf":
+		mediaType = whatsmeow.MediaDocument
+		mimeType = "application/pdf"
+	default:
+		mediaType = whatsmeow.MediaDocument
+		mimeType = "application/octet-stream"
+	}
+
+	resp, err := a.client.Upload(ctx, fileBytes, mediaType)
+	if err != nil {
+		return fmt.Errorf("failed to upload media: %w", err)
+	}
+
+	var msg waE2E.Message
+	fileName := filepath.Base(filePath)
+
+	switch mediaType {
+	case whatsmeow.MediaImage:
+		msg.ImageMessage = &waE2E.ImageMessage{
+			Mimetype:      proto.String(mimeType),
+			URL:           &resp.URL,
+			DirectPath:    &resp.DirectPath,
+			MediaKey:      resp.MediaKey,
+			FileEncSHA256: resp.FileEncSHA256,
+			FileSHA256:    resp.FileSHA256,
+			FileLength:    &resp.FileLength,
+		}
+	case whatsmeow.MediaVideo:
+		msg.VideoMessage = &waE2E.VideoMessage{
+			Mimetype:      proto.String(mimeType),
+			URL:           &resp.URL,
+			DirectPath:    &resp.DirectPath,
+			MediaKey:      resp.MediaKey,
+			FileEncSHA256: resp.FileEncSHA256,
+			FileSHA256:    resp.FileSHA256,
+			FileLength:    &resp.FileLength,
+		}
+	case whatsmeow.MediaAudio:
+		msg.AudioMessage = &waE2E.AudioMessage{
+			Mimetype:      proto.String(mimeType),
+			URL:           &resp.URL,
+			DirectPath:    &resp.DirectPath,
+			MediaKey:      resp.MediaKey,
+			FileEncSHA256: resp.FileEncSHA256,
+			FileSHA256:    resp.FileSHA256,
+			FileLength:    &resp.FileLength,
+		}
+	case whatsmeow.MediaDocument:
+		msg.DocumentMessage = &waE2E.DocumentMessage{
+			Title:         proto.String(fileName),
+			FileName:      proto.String(fileName),
+			Mimetype:      proto.String(mimeType),
+			URL:           &resp.URL,
+			DirectPath:    &resp.DirectPath,
+			MediaKey:      resp.MediaKey,
+			FileEncSHA256: resp.FileEncSHA256,
+			FileSHA256:    resp.FileSHA256,
+			FileLength:    &resp.FileLength,
+		}
+	}
+
+	_, err = a.client.SendMessage(ctx, jid, &msg)
+	return err
+}

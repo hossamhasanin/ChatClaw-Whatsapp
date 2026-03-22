@@ -22,6 +22,7 @@ import (
 	feishutools "chatclaw/internal/eino/tools/im/feishu"
 	qqtools "chatclaw/internal/eino/tools/im/qq"
 	wecomtools "chatclaw/internal/eino/tools/im/wecom"
+	whatsapptools "chatclaw/internal/eino/tools/im/whatsapp"
 	"chatclaw/internal/errs"
 	"chatclaw/internal/services/channels"
 
@@ -224,6 +225,7 @@ func buildLeadAgentTools(allTools []tool.BaseTool, extraTools []tool.BaseTool, s
 	allowedNames[tools.ToolIDWeComSender] = true
 	allowedNames[tools.ToolIDDingTalkSender] = true
 	allowedNames[tools.ToolIDQQSender] = true
+	allowedNames[tools.ToolIDWhatsAppSender] = true
 
 	// MCP tools (mcp__*) should be directly available to the lead agent
 	for _, t := range extraTools {
@@ -369,6 +371,11 @@ func buildIMTools(config Config, logger *slog.Logger) []tool.BaseTool {
 		}},
 		{"qq_sender", func() (tool.BaseTool, error) {
 			return qqtools.NewQQSenderTool(&qqtools.QQSenderConfig{
+				Gateway: config.IMGateway, DefaultChannelID: config.IMDefaultChannelID, DefaultTargetID: config.IMDefaultTargetID,
+			})
+		}},
+		{"whatsapp_sender", func() (tool.BaseTool, error) {
+			return whatsapptools.NewWhatsAppSenderTool(&whatsapptools.WhatsAppSenderConfig{
 				Gateway: config.IMGateway, DefaultChannelID: config.IMDefaultChannelID, DefaultTargetID: config.IMDefaultTargetID,
 			})
 		}},
